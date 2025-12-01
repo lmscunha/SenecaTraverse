@@ -5,11 +5,12 @@ function Traverse(options) {
     const seneca = this;
     const { Default } = seneca.valid;
     // TODO: entity needs exported util for this
-    const canon = ('string' === typeof options.canon.zone ? options.canon.zone : '-') + '/' +
-        ('string' === typeof options.canon.base ? options.canon.base : '-') + '/' +
+    const canon = ('string' === typeof options.canon.zone ? options.canon.zone : '-') +
+        '/' +
+        ('string' === typeof options.canon.base ? options.canon.base : '-') +
+        '/' +
         ('string' === typeof options.canon.name ? options.canon.name : '-');
-    seneca
-        .fix('sys:traverse');
+    seneca.fix('sys:traverse');
     // .message('find:deps', msgFindDeps)
 }
 // Default options.
@@ -20,7 +21,7 @@ const defaults = {
         zone: undefined,
         base: 'sys',
         name: 'traverse',
-    }
+    },
 };
 Object.assign(Traverse, { defaults });
 exports.default = Traverse;
