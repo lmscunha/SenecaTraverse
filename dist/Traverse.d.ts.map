@@ -1,0 +1,1 @@
+{"version":3,"file":"Traverse.d.ts","sourceRoot":"","sources":["../src/Traverse.ts"],"names":[],"mappings":"AAEA,KAAK,mBAAmB,GAAG;IACzB,KAAK,EAAE,OAAO,CAAA;CACf,CAAA;AAED,MAAM,MAAM,eAAe,GAAG,OAAO,CAAC,mBAAmB,CAAC,CAAA;AAE1D,iBAAS,QAAQ,CAAC,IAAI,EAAE,GAAG,EAAE,OAAO,EAAE,mBAAmB,QAOxD;AAUD,eAAe,QAAQ,CAAA"}

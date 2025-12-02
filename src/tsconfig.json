@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "module": "nodenext",
+    "noEmitOnError": true,
+    "outDir": "../dist",
+    "resolveJsonModule": true,
+    "rootDir": ".",
+    "strict": true,
+    "target": "ES2022",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true
+  }
+}
