@@ -25,7 +25,11 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     ('string' === typeof options.canon.name ? options.canon.name : '-')
 
   seneca.fix('sys:traverse')
-  // .message('find:deps', msgFindDeps)
+    .message('find:deps', msgFindDeps)
+
+  async function msgFindDeps(this: any, msg: any) {
+    const seneca = this
+  }
 }
 
 // Default options.
