@@ -3,6 +3,7 @@ type Relation = [Entity, Entity];
 type Parental = Relation[];
 type TraverseOptionsFull = {
     debug: boolean;
+    rootEntity: Entity;
     relations: {
         parental: Parental;
     };

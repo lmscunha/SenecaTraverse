@@ -8,6 +8,7 @@ type Parental = Relation[]
 
 type TraverseOptionsFull = {
   debug: boolean
+  rootEntity: Entity
   relations: {
     parental: Parental
   }
@@ -20,19 +21,59 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
   const { Default } = seneca.valid
 
-  seneca.fix('sys:traverse')
-    .message('find:deps', msgFindDeps)
+  seneca.fix('sys:traverse').message('find:deps', msgFindDeps)
 
-  async function msgFindDeps(this: any, msg: any) {
-    const seneca = this
+  // Returns the sorted entity pairs, starting from a given entity.
+  // In breadth-first order, sorting first by level, then alphabetically in each level.
+  async function msgFindDeps(
+    this: any,
+    msg: any,
+  ): Promise<{ ok: boolean; deps: Relation[] }> {
+    // const seneca = this
 
-    // console.log('nodes ', options.relations.parental)
+    const allRealtions = options.relations.parental
+    const rootEntity = options.rootEntity
+    const parentChildrenMap: Map<Entity, Entity[]> = new Map()
+    const deps: Relation[] = []
 
-
-    return {
-      ok: true, deps: []
+    for (let [parent, child] of allRealtions) {
+      if (!parentChildrenMap.has(parent)) {
+        parentChildrenMap.set(parent, [])
+      }
+      const childrenList = parentChildrenMap.get(parent) || []
+      childrenList.push(child)
+      parentChildrenMap.set(parent, childrenList)
     }
 
+    const visitedEntitiesSet: Set<Entity> = new Set()
+    const entitiesToProcess: Entity[] = []
+
+    visitedEntitiesSet.add(rootEntity)
+    entitiesToProcess.push(rootEntity)
+
+    while (entitiesToProcess.length > 0) {
+      const entity = entitiesToProcess.shift()!
+      const entityChildren = parentChildrenMap.get(entity) || []
+
+      entityChildren.sort()
+
+      if (entityChildren.length === 0) {
+        continue
+      }
+
+      entityChildren.forEach((child) => {
+        if (!visitedEntitiesSet.has(child)) {
+          deps.push([entity, child])
+          visitedEntitiesSet.add(child)
+          entitiesToProcess.push(child)
+        }
+      })
+    }
+
+    return {
+      ok: true,
+      deps,
+    }
   }
 }
 
@@ -40,14 +81,16 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 const defaults: TraverseOptionsFull = {
   // TODO: Enable debug logging
   debug: false,
+  // TODO: define root entity
+  rootEntity: '',
   relations: {
     parental: [
       // TODO: define standard relations
       // ['sys/user', 'sys/login'],
       // ['ledger/book', 'ledger/credit'],
       // ['ledger/book', 'ledger/debit']
-    ]
-  }
+    ],
+  },
 }
 
 Object.assign(Traverse, { defaults })

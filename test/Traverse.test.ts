@@ -31,6 +31,7 @@ describe('Traverse', () => {
       .use('promisify')
       .use('entity')
       .use(Traverse, {
+        rootEntity: 'foo/bar0',
         relations: {
           parental: [
             ['foo/bar2', 'foo/bar3'],
@@ -49,8 +50,8 @@ describe('Traverse', () => {
             ['foo/bar2', 'foo/bar9'],
             ['foo/bar6', 'foo/bar10'],
             ['foo/bar7', 'foo/bar11'],
-          ]
-        }
+          ],
+        },
       })
 
     await seneca.ready()

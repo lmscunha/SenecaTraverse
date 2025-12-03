@@ -28,6 +28,7 @@ const __2 = __importDefault(require(".."));
             .use('promisify')
             .use('entity')
             .use(__2.default, {
+            rootEntity: 'foo/bar0',
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
