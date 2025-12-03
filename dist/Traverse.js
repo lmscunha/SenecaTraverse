@@ -4,8 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 function Traverse(options) {
     const seneca = this;
     const { Default } = seneca.valid;
-    seneca.fix('sys:traverse')
-        .message('find:deps', msgFindDeps);
+    seneca.fix('sys:traverse').message('find:deps', msgFindDeps);
     // Returns the sorted entity pairs, starting from a given entity.
     // In breadth-first order, sorting first by level, then alphabetically in each level.
     async function msgFindDeps(msg) {
@@ -23,26 +22,30 @@ function Traverse(options) {
             parentChildrenMap.set(parent, childrenList);
         }
         const visitedEntitiesSet = new Set();
-        const entitiesToProcess = [];
+        let levelEntToProcess = [];
         visitedEntitiesSet.add(rootEntity);
-        entitiesToProcess.push(rootEntity);
-        while (entitiesToProcess.length > 0) {
-            const entity = entitiesToProcess.shift();
-            const entityChildren = parentChildrenMap.get(entity) || [];
-            entityChildren.sort();
-            if (entityChildren.length === 0) {
-                continue;
-            }
-            entityChildren.forEach((child) => {
-                if (!visitedEntitiesSet.has(child)) {
-                    deps.push([entity, child]);
-                    visitedEntitiesSet.add(child);
-                    entitiesToProcess.push(child);
+        levelEntToProcess.push(rootEntity);
+        while (levelEntToProcess.length > 0) {
+            const nextLevel = [];
+            levelEntToProcess.sort();
+            for (const parent of levelEntToProcess) {
+                const entityChildren = parentChildrenMap.get(parent)?.sort() || [];
+                if (entityChildren.length === 0) {
+                    continue;
                 }
-            });
+                for (const child of entityChildren) {
+                    if (!visitedEntitiesSet.has(child)) {
+                        deps.push([parent, child]);
+                        visitedEntitiesSet.add(child);
+                        nextLevel.push(child);
+                    }
+                }
+            }
+            levelEntToProcess = nextLevel;
         }
         return {
-            ok: true, deps
+            ok: true,
+            deps,
         };
     }
 }
@@ -58,8 +61,8 @@ const defaults = {
         // ['sys/user', 'sys/login'],
         // ['ledger/book', 'ledger/credit'],
         // ['ledger/book', 'ledger/debit']
-        ]
-    }
+        ],
+    },
 };
 Object.assign(Traverse, { defaults });
 exports.default = Traverse;

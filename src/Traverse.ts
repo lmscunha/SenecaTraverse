@@ -40,34 +40,40 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       if (!parentChildrenMap.has(parent)) {
         parentChildrenMap.set(parent, [])
       }
+
       const childrenList = parentChildrenMap.get(parent) || []
       childrenList.push(child)
       parentChildrenMap.set(parent, childrenList)
     }
 
     const visitedEntitiesSet: Set<Entity> = new Set()
-    const entitiesToProcess: Entity[] = []
+    let levelEntToProcess: Entity[] = []
 
     visitedEntitiesSet.add(rootEntity)
-    entitiesToProcess.push(rootEntity)
+    levelEntToProcess.push(rootEntity)
 
-    while (entitiesToProcess.length > 0) {
-      const entity = entitiesToProcess.shift()!
-      const entityChildren = parentChildrenMap.get(entity) || []
+    while (levelEntToProcess.length > 0) {
+      const nextLevel: Entity[] = []
 
-      entityChildren.sort()
+      levelEntToProcess.sort()
 
-      if (entityChildren.length === 0) {
-        continue
+      for (const parent of levelEntToProcess) {
+        const entityChildren = parentChildrenMap.get(parent)?.sort() || []
+
+        if (entityChildren.length === 0) {
+          continue
+        }
+
+        for (const child of entityChildren) {
+          if (!visitedEntitiesSet.has(child)) {
+            deps.push([parent, child])
+            visitedEntitiesSet.add(child)
+            nextLevel.push(child)
+          }
+        }
       }
 
-      entityChildren.forEach((child) => {
-        if (!visitedEntitiesSet.has(child)) {
-          deps.push([entity, child])
-          visitedEntitiesSet.add(child)
-          entitiesToProcess.push(child)
-        }
-      })
+      levelEntToProcess = nextLevel
     }
 
     return {

@@ -47,8 +47,8 @@ const __2 = __importDefault(require(".."));
                     ['foo/bar2', 'foo/bar9'],
                     ['foo/bar6', 'foo/bar10'],
                     ['foo/bar7', 'foo/bar11'],
-                ]
-            }
+                ],
+            },
         });
         await seneca.ready();
         const result = await seneca.post('sys:traverse,find:deps');
