@@ -4,7 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
-    const { Default } = seneca.valid;
+    // const { Default } = seneca.valid
     seneca.fix('sys:traverse').message('find:deps', {
         rootEntity: (0, gubu_1.Optional)(String),
         relations: (0, gubu_1.Skip)({ parental: [[String, String]] }),
@@ -15,8 +15,8 @@ function Traverse(options) {
         // const seneca = this
         const allRelations = msg.relations?.parental || options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
-        const parentChildrenMap = new Map();
         const deps = [];
+        const parentChildrenMap = new Map();
         for (const [parent, child] of allRelations) {
             if (!parentChildrenMap.has(parent)) {
                 parentChildrenMap.set(parent, []);

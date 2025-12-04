@@ -21,7 +21,7 @@ export type TraverseOptions = Partial<TraverseOptionsFull>
 function Traverse(this: any, options: TraverseOptionsFull) {
   const seneca: any = this
 
-  const { Default } = seneca.valid
+  // const { Default } = seneca.valid
 
   seneca.fix('sys:traverse').message(
     'find:deps',
@@ -37,20 +37,19 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   async function msgFindDeps(
     this: any,
     msg: {
-      rootEntity: Entity
-      relations: {
+      rootEntity?: Entity
+      relations?: {
         parental: Parental
       }
     },
   ): Promise<{ ok: boolean; deps: Relation[] }> {
     // const seneca = this
-
     const allRelations: Parental =
       msg.relations?.parental || options.relations.parental
     const rootEntity = msg.rootEntity || options.rootEntity
+    const deps: Relation[] = []
 
     const parentChildrenMap: Map<Entity, Entity[]> = new Map()
-    const deps: Relation[] = []
 
     for (const [parent, child] of allRelations) {
       if (!parentChildrenMap.has(parent)) {
