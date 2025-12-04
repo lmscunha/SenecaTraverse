@@ -307,6 +307,131 @@ describe('Traverse', () => {
     ])
   })
 
+  test('find-deps-default-root', async () => {
+    const seneca = makeSeneca().use(Traverse)
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps', {
+      relations: {
+        parental: [
+          ['foo/bar0', 'foo/bar3'],
+          ['sys/user', 'foo/bar1'],
+          ['foo/bar0', 'foo/bar2'],
+          ['foo/bar1', 'foo/bar4'],
+          ['foo/bar1', 'foo/bar5'],
+          ['foo/bar3', 'foo/bar6'],
+          ['foo/bar4', 'foo/bar7'],
+          ['foo/bar5', 'foo/bar8'],
+          ['foo/bar0', 'foo/zed0'],
+          ['foo/zed0', 'foo/zed1'],
+          ['foo/zed1', 'foo/zed2'],
+          ['bar/baz0', 'bar/baz1'],
+          ['qux/test', 'qux/prod'],
+          ['foo/bar2', 'foo/bar9'],
+          ['foo/bar6', 'foo/bar10'],
+          ['foo/bar7', 'foo/bar11'],
+        ],
+      },
+    })
+    // console.log('RES', res)
+
+    expect(res.deps).equal([
+      // Level 0
+      ['sys/user', 'foo/bar1'],
+
+      // Level 1
+      ['foo/bar1', 'foo/bar4'],
+      ['foo/bar1', 'foo/bar5'],
+
+      // Level 2
+      ['foo/bar4', 'foo/bar7'],
+      ['foo/bar5', 'foo/bar8'],
+
+      // Level 3
+      ['foo/bar7', 'foo/bar11'],
+    ])
+  })
+
+  test('find-deps-all-custom', async () => {
+    const seneca = makeSeneca().use(Traverse)
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps', {
+      rootEntity: 'foo/bar0',
+      relations: {
+        parental: [
+          ['foo/bar2', 'foo/bar3'],
+          ['foo/bar0', 'foo/bar1'],
+          ['foo/bar0', 'foo/bar2'],
+          ['foo/bar1', 'foo/bar4'],
+          ['foo/bar1', 'foo/bar5'],
+          ['foo/bar3', 'foo/bar6'],
+          ['foo/bar4', 'foo/bar7'],
+          ['foo/bar5', 'foo/bar8'],
+          ['foo/bar0', 'foo/zed0'],
+          ['foo/zed0', 'foo/zed1'],
+          ['foo/zed1', 'foo/zed2'],
+          ['bar/baz0', 'bar/baz1'],
+          ['qux/test', 'qux/prod'],
+          ['foo/bar2', 'foo/bar9'],
+          ['foo/bar6', 'foo/bar10'],
+          ['foo/bar7', 'foo/bar11'],
+        ],
+      },
+    })
+    // console.log('RES', res)
+
+    expect(res.deps).equal([
+      // Level 0
+      ['foo/bar0', 'foo/bar1'],
+      ['foo/bar0', 'foo/bar2'],
+      ['foo/bar0', 'foo/zed0'],
+
+      // Level 1
+      ['foo/bar1', 'foo/bar4'],
+      ['foo/bar1', 'foo/bar5'],
+      ['foo/bar2', 'foo/bar3'],
+      ['foo/bar2', 'foo/bar9'],
+      ['foo/zed0', 'foo/zed1'],
+
+      // Level 2
+      ['foo/bar3', 'foo/bar6'],
+      ['foo/bar4', 'foo/bar7'],
+      ['foo/bar5', 'foo/bar8'],
+      ['foo/zed1', 'foo/zed2'],
+
+      // Level 3
+      ['foo/bar6', 'foo/bar10'],
+      ['foo/bar7', 'foo/bar11'],
+    ])
+  })
+
+  test('find-deps-all-default', async () => {
+    const seneca = makeSeneca().use(Traverse)
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps')
+    // console.log('RES', res)
+
+    expect(res.deps).equal([])
+  })
+
+  test('find-deps-empty-list', async () => {
+    const seneca = makeSeneca().use(Traverse, {
+      relations: {
+        parental: [],
+      },
+    })
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps', {
+      rootEntity: 'foo/bar0',
+    })
+    // console.log('RES', res)
+
+    expect(res.deps).equal([])
+  })
+
   test('find-deps-l1', async () => {
     const seneca = makeSeneca().use(Traverse, {
       relations: {

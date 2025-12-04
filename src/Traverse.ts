@@ -23,16 +23,14 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
   const { Default } = seneca.valid
 
-  seneca
-    .fix('sys:traverse')
-    .message(
-      'find:deps',
-      {
-        rootEntity: Optional(String),
-        relations: Skip({ parental: [[String, String]] }),
-      },
-      msgFindDeps,
-    )
+  seneca.fix('sys:traverse').message(
+    'find:deps',
+    {
+      rootEntity: Optional(String),
+      relations: Skip({ parental: [[String, String]] }),
+    },
+    msgFindDeps,
+  )
 
   // Returns the sorted entity pairs, starting from a given entity.
   // In breadth-first order, sorting first by level, then alphabetically in each level.
