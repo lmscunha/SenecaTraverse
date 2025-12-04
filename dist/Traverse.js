@@ -4,13 +4,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 function Traverse(options) {
     const seneca = this;
     const { Default } = seneca.valid;
-    seneca.fix('sys:traverse').message('find:deps', msgFindDeps);
+    seneca.fix('sys:traverse').message('find:deps', { rootEntity: String }, msgFindDeps);
     // Returns the sorted entity pairs, starting from a given entity.
     // In breadth-first order, sorting first by level, then alphabetically in each level.
     async function msgFindDeps(msg) {
         // const seneca = this
         const allRealtions = options.relations.parental;
-        const rootEntity = options.rootEntity;
+        const rootEntity = msg.rootEntity || options.rootEntity;
         const parentChildrenMap = new Map();
         const deps = [];
         for (let [parent, child] of allRealtions) {
@@ -53,15 +53,9 @@ function Traverse(options) {
 const defaults = {
     // TODO: Enable debug logging
     debug: false,
-    // TODO: define root entity
-    rootEntity: '',
+    rootEntity: 'sys/user',
     relations: {
-        parental: [
-        // TODO: define standard relations
-        // ['sys/user', 'sys/login'],
-        // ['ledger/book', 'ledger/credit'],
-        // ['ledger/book', 'ledger/debit']
-        ],
+        parental: [],
     },
 };
 Object.assign(Traverse, { defaults });
