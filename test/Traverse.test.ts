@@ -244,6 +244,62 @@ describe('Traverse', () => {
     ])
   })
 
+  test('find-deps-two-convergent', async () => {
+    const seneca = makeSeneca().use(Traverse, {
+      relations: {
+        parental: [
+          ['foo/bar0', 'foo/bar1'],
+          ['foo/bar0', 'foo/bar2'],
+          ['foo/bar0', 'foo/bar3'],
+          ['foo/bar1', 'foo/bar4'],
+          // bar4 from two parents
+          ['foo/bar2', 'foo/bar4'],
+          ['foo/bar3', 'foo/bar5'],
+          ['foo/bar4', 'foo/bar6'],
+          // bar6 from two parents at different levels
+          ['foo/bar5', 'foo/bar6'],
+        ],
+      },
+    })
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps', {
+      rootEntity: 'foo/bar0',
+    })
+
+    expect(res.deps).equal([
+      ['foo/bar0', 'foo/bar1'],
+      ['foo/bar0', 'foo/bar2'],
+      ['foo/bar0', 'foo/bar3'],
+      ['foo/bar1', 'foo/bar4'],
+      ['foo/bar3', 'foo/bar5'],
+      ['foo/bar4', 'foo/bar6'],
+    ])
+  })
+
+  test('find-deps-self-ref', async () => {
+    const seneca = makeSeneca().use(Traverse, {
+      relations: {
+        parental: [
+          ['foo/bar0', 'foo/bar1'],
+          // Self loop
+          ['foo/bar1', 'foo/bar1'],
+          ['foo/bar1', 'foo/bar2'],
+        ],
+      },
+    })
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,find:deps', {
+      rootEntity: 'foo/bar0',
+    })
+
+    expect(res.deps).equal([
+      ['foo/bar0', 'foo/bar1'],
+      ['foo/bar1', 'foo/bar2'],
+    ])
+  })
+
   test('find-deps-l1', async () => {
     const seneca = makeSeneca().use(Traverse, {
       relations: {
