@@ -13,48 +13,47 @@ function Traverse(options) {
     // In breadth-first order, sorting first by level, then alphabetically in each level.
     async function msgFindDeps(msg) {
         // const seneca = this
-        const allRealtions = msg.relations?.parental || options.relations.parental;
+        const allRelations = msg.relations?.parental || options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const parentChildrenMap = new Map();
         const deps = [];
-        for (let [parent, child] of allRealtions) {
+        for (const [parent, child] of allRelations) {
             if (!parentChildrenMap.has(parent)) {
                 parentChildrenMap.set(parent, []);
             }
-            const childrenList = parentChildrenMap.get(parent) || [];
-            childrenList.push(child);
-            parentChildrenMap.set(parent, childrenList);
+            parentChildrenMap.get(parent).push(child);
         }
-        const visitedEntitiesSet = new Set();
-        let levelEntToProcess = [];
-        visitedEntitiesSet.add(rootEntity);
-        levelEntToProcess.push(rootEntity);
-        while (levelEntToProcess.length > 0) {
+        for (const children of parentChildrenMap.values()) {
+            children.sort();
+        }
+        const visitedEntitiesSet = new Set([rootEntity]);
+        let currentLevel = [rootEntity];
+        while (currentLevel.length > 0) {
             const nextLevel = [];
-            const levelDeps = [];
-            levelEntToProcess.sort();
-            for (const parent of levelEntToProcess) {
-                const entityChildren = parentChildrenMap.get(parent)?.sort() || [];
-                if (entityChildren.length === 0) {
-                    continue;
-                }
-                for (const child of entityChildren) {
-                    if (!visitedEntitiesSet.has(child)) {
-                        levelDeps.push([parent, child]);
-                        visitedEntitiesSet.add(child);
-                        nextLevel.push(child);
+            let levelDeps = [];
+            for (const parent of currentLevel) {
+                const children = parentChildrenMap.get(parent) || [];
+                for (const child of children) {
+                    if (visitedEntitiesSet.has(child)) {
+                        continue;
                     }
+                    levelDeps.push([parent, child]);
+                    visitedEntitiesSet.add(child);
+                    nextLevel.push(child);
                 }
             }
-            levelDeps.sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
-                a[1].localeCompare(b[1], undefined, { numeric: true }));
+            levelDeps = compareRelations(levelDeps);
             deps.push(...levelDeps);
-            levelEntToProcess = nextLevel;
+            currentLevel = nextLevel;
         }
         return {
             ok: true,
             deps,
         };
+    }
+    function compareRelations(relations) {
+        return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
+            a[1].localeCompare(b[1], undefined, { numeric: true }));
     }
 }
 // Default options.

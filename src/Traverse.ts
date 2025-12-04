@@ -45,65 +45,63 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   ): Promise<{ ok: boolean; deps: Relation[] }> {
     // const seneca = this
 
-    const allRealtions: Parental =
+    const allRelations: Parental =
       msg.relations?.parental || options.relations.parental
     const rootEntity = msg.rootEntity || options.rootEntity
 
     const parentChildrenMap: Map<Entity, Entity[]> = new Map()
     const deps: Relation[] = []
 
-    for (let [parent, child] of allRealtions) {
+    for (const [parent, child] of allRelations) {
       if (!parentChildrenMap.has(parent)) {
         parentChildrenMap.set(parent, [])
       }
 
-      const childrenList = parentChildrenMap.get(parent) || []
-      childrenList.push(child)
-      parentChildrenMap.set(parent, childrenList)
+      parentChildrenMap.get(parent)!.push(child)
     }
 
-    const visitedEntitiesSet: Set<Entity> = new Set()
-    let levelEntToProcess: Entity[] = []
+    for (const children of parentChildrenMap.values()) {
+      children.sort()
+    }
 
-    visitedEntitiesSet.add(rootEntity)
-    levelEntToProcess.push(rootEntity)
+    const visitedEntitiesSet: Set<Entity> = new Set([rootEntity])
+    let currentLevel: Entity[] = [rootEntity]
 
-    while (levelEntToProcess.length > 0) {
+    while (currentLevel.length > 0) {
       const nextLevel: Entity[] = []
-      const levelDeps: Relation[] = []
+      let levelDeps: Relation[] = []
 
-      levelEntToProcess.sort()
+      for (const parent of currentLevel) {
+        const children = parentChildrenMap.get(parent) || []
 
-      for (const parent of levelEntToProcess) {
-        const entityChildren = parentChildrenMap.get(parent)?.sort() || []
-
-        if (entityChildren.length === 0) {
-          continue
-        }
-
-        for (const child of entityChildren) {
-          if (!visitedEntitiesSet.has(child)) {
-            levelDeps.push([parent, child])
-            visitedEntitiesSet.add(child)
-            nextLevel.push(child)
+        for (const child of children) {
+          if (visitedEntitiesSet.has(child)) {
+            continue
           }
+
+          levelDeps.push([parent, child])
+          visitedEntitiesSet.add(child)
+          nextLevel.push(child)
         }
       }
 
-      levelDeps.sort(
-        (a, b) =>
-          a[0].localeCompare(b[0], undefined, { numeric: true }) ||
-          a[1].localeCompare(b[1], undefined, { numeric: true }),
-      )
-
+      levelDeps = compareRelations(levelDeps)
       deps.push(...levelDeps)
-      levelEntToProcess = nextLevel
+      currentLevel = nextLevel
     }
 
     return {
       ok: true,
       deps,
     }
+  }
+
+  function compareRelations(relations: Relation[]): Relation[] {
+    return [...relations].sort(
+      (a, b) =>
+        a[0].localeCompare(b[0], undefined, { numeric: true }) ||
+        a[1].localeCompare(b[1], undefined, { numeric: true }),
+    )
   }
 }
 
