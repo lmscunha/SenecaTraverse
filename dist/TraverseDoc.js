@@ -1,0 +1,15 @@
+"use strict";
+/* Copyright © 2024 Seneca Project Contributors, MIT License. */
+Object.defineProperty(exports, "__esModule", { value: true });
+const docs = {
+    messages: {
+    // msgFindDeps: {
+    //   desc: 'Return a sorted list of dependencies.',
+    // }
+    },
+};
+exports.default = docs;
+if ('undefined' !== typeof module) {
+    module.exports = docs;
+}
+//# sourceMappingURL=TraverseDoc.js.map
