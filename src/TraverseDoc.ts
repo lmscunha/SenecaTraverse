@@ -2,9 +2,9 @@
 
 const docs = {
   messages: {
-    // msgFindDeps: {
-    //   desc: 'Return a sorted list of dependencies.',
-    // }
+    msgFindDeps: {
+      desc: 'Returns a sorted list of entity pairs starting from a given entity.',
+    },
   },
 }
 
