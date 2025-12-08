@@ -859,7 +859,7 @@ describe('Traverse', () => {
       relations: resFindDeps.deps,
     })
 
-    expect(res.childrenIdx).equal([
+    expect(res.children).equal([
       // Level 1
       {
         parent_id: rootEntityId,
@@ -949,6 +949,25 @@ describe('Traverse', () => {
         child_canon: 'foo/bar11',
       },
     ])
+  })
+
+  test('find-children-empty-relations', async () => {
+    const seneca = makeSeneca().use(Traverse, {
+      relations: {
+        parental: [],
+      },
+    })
+    await seneca.ready()
+
+    const rootEntityId = '123'
+
+    const res = await seneca.post('sys:traverse,find:children', {
+      rootEntity: 'foo/bar0',
+      rootEntityId: rootEntityId,
+      relations: [],
+    })
+
+    expect(res.children).equal([])
   })
 })
 

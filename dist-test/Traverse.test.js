@@ -754,7 +754,7 @@ const __2 = __importDefault(require(".."));
             rootEntityId: rootEntityId,
             relations: resFindDeps.deps,
         });
-        (0, code_1.expect)(res.childrenIdx).equal([
+        (0, code_1.expect)(res.children).equal([
             // Level 1
             {
                 parent_id: rootEntityId,
@@ -844,6 +844,21 @@ const __2 = __importDefault(require(".."));
                 child_canon: 'foo/bar11',
             },
         ]);
+    });
+    (0, node_test_1.test)('find-children-empty-relations', async () => {
+        const seneca = makeSeneca().use(__2.default, {
+            relations: {
+                parental: [],
+            },
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const res = await seneca.post('sys:traverse,find:children', {
+            rootEntity: 'foo/bar0',
+            rootEntityId: rootEntityId,
+            relations: [],
+        });
+        (0, code_1.expect)(res.children).equal([]);
     });
 });
 function makeSeneca(opts = {}) {

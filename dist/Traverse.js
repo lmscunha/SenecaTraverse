@@ -93,7 +93,7 @@ function Traverse(options) {
         }
         return {
             ok: true,
-            childrenIdx: out,
+            children: out,
         };
     }
     function compareRelations(relations) {

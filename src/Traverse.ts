@@ -122,8 +122,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     },
   ): Promise<{
     ok: boolean
-    why?: string
-    childrenIdx?: ChildrenIntances[]
+    children: ChildrenIntances[]
   }> {
     const out: ChildrenIntances[] = []
     const rootEntity: Entity = msg.rootEntity || options.rootEntity
@@ -174,7 +173,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
     return {
       ok: true,
-      childrenIdx: out,
+      children: out,
     }
   }
 
