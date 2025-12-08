@@ -764,8 +764,18 @@ describe('Traverse', () => {
         parental: [
           ['foo/bar0', 'foo/bar1'],
           ['foo/bar0', 'foo/bar2'],
-          ['foo/bar1', 'foo/bar3'],
+          ['foo/bar0', 'foo/zed0'],
           ['foo/bar1', 'foo/bar4'],
+          ['foo/bar1', 'foo/bar5'],
+          ['foo/bar2', 'foo/bar3'],
+          ['foo/bar2', 'foo/bar9'],
+          ['foo/zed0', 'foo/zed1'],
+          ['foo/bar3', 'foo/bar6'],
+          ['foo/bar4', 'foo/bar7'],
+          ['foo/bar5', 'foo/bar8'],
+          ['foo/zed1', 'foo/zed2'],
+          ['foo/bar6', 'foo/bar10'],
+          ['foo/bar7', 'foo/bar11'],
         ],
       },
     })
@@ -777,6 +787,7 @@ describe('Traverse', () => {
 
     const rootEntityId = '123'
 
+    // Level 1: Direct children of bar0
     const bar1Ent = await seneca.entity('foo/bar1').save$({
       bar0_id: rootEntityId,
     })
@@ -785,12 +796,61 @@ describe('Traverse', () => {
       bar0_id: rootEntityId,
     })
 
-    const bar3Ent = await seneca.entity('foo/bar3').save$({
+    const zed0Ent = await seneca.entity('foo/zed0').save$({
+      bar0_id: rootEntityId,
+    })
+
+    // Level 2: Children of bar1
+    const bar4Ent = await seneca.entity('foo/bar4').save$({
       bar1_id: bar1Ent.id,
     })
 
-    const bar4Ent = await seneca.entity('foo/bar4').save$({
+    const bar5Ent = await seneca.entity('foo/bar5').save$({
       bar1_id: bar1Ent.id,
+    })
+
+    // Level 2: Children of bar2
+    const bar3Ent = await seneca.entity('foo/bar3').save$({
+      bar2_id: bar2Ent.id,
+    })
+
+    const bar9Ent = await seneca.entity('foo/bar9').save$({
+      bar2_id: bar2Ent.id,
+    })
+
+    // Level 2: Children of zed0
+    const zed1Ent = await seneca.entity('foo/zed1').save$({
+      zed0_id: zed0Ent.id,
+    })
+
+    // Level 3: Children of bar3
+    const bar6Ent = await seneca.entity('foo/bar6').save$({
+      bar3_id: bar3Ent.id,
+    })
+
+    // Level 3: Children of bar4
+    const bar7Ent = await seneca.entity('foo/bar7').save$({
+      bar4_id: bar4Ent.id,
+    })
+
+    // Level 3: Children of bar5
+    const bar8Ent = await seneca.entity('foo/bar8').save$({
+      bar5_id: bar5Ent.id,
+    })
+
+    // Level 3: Children of zed1
+    const zed2Ent = await seneca.entity('foo/zed2').save$({
+      zed1_id: zed1Ent.id,
+    })
+
+    // Level 4: Children of bar6
+    const bar10Ent = await seneca.entity('foo/bar10').save$({
+      bar6_id: bar6Ent.id,
+    })
+
+    // Level 4: Children of bar7
+    const bar11Ent = await seneca.entity('foo/bar11').save$({
+      bar7_id: bar7Ent.id,
     })
 
     const res = await seneca.post('sys:traverse,find:children', {
@@ -800,6 +860,7 @@ describe('Traverse', () => {
     })
 
     expect(res.childrenIdx).equal([
+      // Level 1
       {
         parent_id: rootEntityId,
         child_id: bar1Ent.id,
@@ -813,16 +874,79 @@ describe('Traverse', () => {
         child_canon: 'foo/bar2',
       },
       {
-        parent_id: bar1Ent.id,
-        child_id: bar3Ent.id,
-        parent_canon: 'foo/bar1',
-        child_canon: 'foo/bar3',
+        parent_id: rootEntityId,
+        child_id: zed0Ent.id,
+        parent_canon: 'foo/bar0',
+        child_canon: 'foo/zed0',
       },
+      // Level 2
       {
         parent_id: bar1Ent.id,
         child_id: bar4Ent.id,
         parent_canon: 'foo/bar1',
         child_canon: 'foo/bar4',
+      },
+      {
+        parent_id: bar1Ent.id,
+        child_id: bar5Ent.id,
+        parent_canon: 'foo/bar1',
+        child_canon: 'foo/bar5',
+      },
+      {
+        parent_id: bar2Ent.id,
+        child_id: bar3Ent.id,
+        parent_canon: 'foo/bar2',
+        child_canon: 'foo/bar3',
+      },
+      {
+        parent_id: bar2Ent.id,
+        child_id: bar9Ent.id,
+        parent_canon: 'foo/bar2',
+        child_canon: 'foo/bar9',
+      },
+      {
+        parent_id: zed0Ent.id,
+        child_id: zed1Ent.id,
+        parent_canon: 'foo/zed0',
+        child_canon: 'foo/zed1',
+      },
+      // Level 3
+      {
+        parent_id: bar3Ent.id,
+        child_id: bar6Ent.id,
+        parent_canon: 'foo/bar3',
+        child_canon: 'foo/bar6',
+      },
+      {
+        parent_id: bar4Ent.id,
+        child_id: bar7Ent.id,
+        parent_canon: 'foo/bar4',
+        child_canon: 'foo/bar7',
+      },
+      {
+        parent_id: bar5Ent.id,
+        child_id: bar8Ent.id,
+        parent_canon: 'foo/bar5',
+        child_canon: 'foo/bar8',
+      },
+      {
+        parent_id: zed1Ent.id,
+        child_id: zed2Ent.id,
+        parent_canon: 'foo/zed1',
+        child_canon: 'foo/zed2',
+      },
+      // Level 4
+      {
+        parent_id: bar6Ent.id,
+        child_id: bar10Ent.id,
+        parent_canon: 'foo/bar6',
+        child_canon: 'foo/bar10',
+      },
+      {
+        parent_id: bar7Ent.id,
+        child_id: bar11Ent.id,
+        parent_canon: 'foo/bar7',
+        child_canon: 'foo/bar11',
       },
     ])
   })
