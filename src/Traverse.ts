@@ -44,6 +44,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       'find:children',
       {
         rootEntity: Optional(String),
+        customRef: Optional(Object),
         rootEntityId: String,
         relations: [[String, String]],
       },
@@ -117,6 +118,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     this: any,
     msg: {
       rootEntity?: Entity
+      customRef?: Record<Entity, string>
       rootEntityId: string
       relations: Relation[]
     },
@@ -141,7 +143,8 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
       const parentEntityName = getEntityName(parentCanon)
 
-      const parentReference = `${parentEntityName}_id`
+      const parentReference =
+        (msg.customRef && msg.customRef[childCanon]) || `${parentEntityName}_id`
 
       const parentInstances = parentInstanceMap.get(parentCanon) ?? []
 

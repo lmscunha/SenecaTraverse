@@ -1218,6 +1218,60 @@ describe('Traverse', () => {
       },
     ])
   })
+
+  test('find-children-custom-key', async () => {
+    const seneca = makeSeneca().use(Traverse)
+    await seneca.ready()
+
+    const rootEntityId = '123'
+
+    const bar1Ent = await seneca.entity('foo/bar1').save$({
+      bar0_id: rootEntityId,
+    })
+
+    const bar2Ent = await seneca.entity('foo/bar2').save$({
+      custom0_id: rootEntityId,
+    })
+
+    const bar3Ent = await seneca.entity('foo/bar3').save$({
+      custom1_test: bar1Ent.id,
+    })
+
+    const res = await seneca.post('sys:traverse,find:children', {
+      rootEntity: 'foo/bar0',
+      rootEntityId: rootEntityId,
+      customRef: {
+        'foo/bar2': 'custom0_id',
+        'foo/bar3': 'custom1_test',
+      },
+      relations: [
+        ['foo/bar0', 'foo/bar1'],
+        ['foo/bar0', 'foo/bar2'],
+        ['foo/bar1', 'foo/bar3'],
+      ],
+    })
+
+    expect(res.children).equal([
+      {
+        parent_id: rootEntityId,
+        child_id: bar1Ent.id,
+        parent_canon: 'foo/bar0',
+        child_canon: 'foo/bar1',
+      },
+      {
+        parent_id: rootEntityId,
+        child_id: bar2Ent.id,
+        parent_canon: 'foo/bar0',
+        child_canon: 'foo/bar2',
+      },
+      {
+        parent_id: bar1Ent.id,
+        child_id: bar3Ent.id,
+        parent_canon: 'foo/bar1',
+        child_canon: 'foo/bar3',
+      },
+    ])
+  })
 })
 
 function makeSeneca(opts: any = {}) {

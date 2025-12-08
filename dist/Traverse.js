@@ -13,6 +13,7 @@ function Traverse(options) {
     }, msgFindDeps)
         .message('find:children', {
         rootEntity: (0, gubu_1.Optional)(String),
+        customRef: (0, gubu_1.Optional)(Object),
         rootEntityId: String,
         relations: [[String, String]],
     }, msgFindChildren);
@@ -70,7 +71,7 @@ function Traverse(options) {
             const parentCanon = relation[0];
             const childCanon = relation[1];
             const parentEntityName = getEntityName(parentCanon);
-            const parentReference = `${parentEntityName}_id`;
+            const parentReference = (msg.customRef && msg.customRef[childCanon]) || `${parentEntityName}_id`;
             const parentInstances = parentInstanceMap.get(parentCanon) ?? [];
             for (const parentId of parentInstances) {
                 const childInstances = await seneca.entity(childCanon).list$({
