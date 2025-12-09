@@ -143,7 +143,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
       const parentEntityName = getEntityName(parentCanon)
 
-      const parentReference =
+      const foreignRef =
         (msg.customRef && msg.customRef[childCanon]) || `${parentEntityName}_id`
 
       const parentInstances = parentInstanceMap.get(parentCanon) ?? []
@@ -153,7 +153,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
           entity$: string
           id: string
         }[] = await seneca.entity(childCanon).list$({
-          [parentReference]: parentId,
+          [foreignRef]: parentId,
           fields$: ['id'],
         })
 

@@ -71,11 +71,11 @@ function Traverse(options) {
             const parentCanon = relation[0];
             const childCanon = relation[1];
             const parentEntityName = getEntityName(parentCanon);
-            const parentReference = (msg.customRef && msg.customRef[childCanon]) || `${parentEntityName}_id`;
+            const foreignRef = (msg.customRef && msg.customRef[childCanon]) || `${parentEntityName}_id`;
             const parentInstances = parentInstanceMap.get(parentCanon) ?? [];
             for (const parentId of parentInstances) {
                 const childInstances = await seneca.entity(childCanon).list$({
-                    [parentReference]: parentId,
+                    [foreignRef]: parentId,
                     fields$: ['id'],
                 });
                 for (const childInst of childInstances) {
