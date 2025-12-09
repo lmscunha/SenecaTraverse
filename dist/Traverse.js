@@ -5,11 +5,8 @@ const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
     // const { Default } = seneca.valid
-    seneca
-        .fix('sys:traverse')
-        .message('find:deps', {
+    seneca.fix('sys:traverse').message('find:deps', {
         rootEntity: (0, gubu_1.Optional)(String),
-        relations: (0, gubu_1.Skip)({ parental: [[String, String]] }),
     }, msgFindDeps)
         .message('find:children', {
         rootEntity: (0, gubu_1.Optional)(String),
@@ -21,7 +18,7 @@ function Traverse(options) {
     // In breadth-first order, sorting first by level, then alphabetically in each level.
     async function msgFindDeps(msg) {
         // const seneca = this
-        const allRelations = msg.relations?.parental || options.relations.parental;
+        const allRelations = options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const deps = [];
         const parentChildrenMap = new Map();

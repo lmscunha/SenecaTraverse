@@ -31,16 +31,13 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
   // const { Default } = seneca.valid
 
-  seneca
-    .fix('sys:traverse')
-    .message(
-      'find:deps',
-      {
-        rootEntity: Optional(String),
-        relations: Skip({ parental: [[String, String]] }),
-      },
-      msgFindDeps,
-    )
+  seneca.fix('sys:traverse').message(
+    'find:deps',
+    {
+      rootEntity: Optional(String),
+    },
+    msgFindDeps,
+  )
     .message(
       'find:children',
       {
@@ -58,14 +55,10 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     this: any,
     msg: {
       rootEntity?: EntityID
-      relations?: {
-        parental: Parental
-      }
     },
   ): Promise<{ ok: boolean; deps: ParentChildRelation[] }> {
     // const seneca = this
-    const allRelations: Parental =
-      msg.relations?.parental || options.relations.parental
+    const allRelations: Parental = options.relations.parental
     const rootEntity = msg.rootEntity || options.rootEntity
     const deps: ParentChildRelation[] = []
 
