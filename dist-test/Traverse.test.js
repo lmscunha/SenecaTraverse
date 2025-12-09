@@ -1217,22 +1217,24 @@ const __2 = __importDefault(require(".."));
         const res = await seneca.post('sys:traverse,find:children', {
             rootEntity: 'foo/bar0',
             rootEntityId: rootEntityId,
-            relations: [],
         });
         (0, code_1.expect)(res.children).equal([]);
     });
     (0, node_test_1.test)('find-children-no-matching-entities', async () => {
-        const seneca = makeSeneca().use(__2.default);
+        const seneca = makeSeneca().use(__2.default, {
+            relations: {
+                parental: [
+                    ['foo/bar0', 'foo/bar1'],
+                    ['foo/bar0', 'foo/bar2'],
+                ],
+            },
+        });
         await seneca.ready();
         const rootEntityId = '123';
         // Missing entities on data storage
         const res = await seneca.post('sys:traverse,find:children', {
             rootEntity: 'foo/bar0',
             rootEntityId: rootEntityId,
-            relations: [
-                ['foo/bar0', 'foo/bar1'],
-                ['foo/bar0', 'foo/bar2'],
-            ],
         });
         (0, code_1.expect)(res.children).equal([]);
     });

@@ -1365,14 +1365,20 @@ describe('Traverse', () => {
     const res = await seneca.post('sys:traverse,find:children', {
       rootEntity: 'foo/bar0',
       rootEntityId: rootEntityId,
-      relations: [],
     })
 
     expect(res.children).equal([])
   })
 
   test('find-children-no-matching-entities', async () => {
-    const seneca = makeSeneca().use(Traverse)
+    const seneca = makeSeneca().use(Traverse, {
+      relations: {
+        parental: [
+          ['foo/bar0', 'foo/bar1'],
+          ['foo/bar0', 'foo/bar2'],
+        ],
+      },
+    })
     await seneca.ready()
 
     const rootEntityId = '123'
@@ -1382,10 +1388,6 @@ describe('Traverse', () => {
     const res = await seneca.post('sys:traverse,find:children', {
       rootEntity: 'foo/bar0',
       rootEntityId: rootEntityId,
-      relations: [
-        ['foo/bar0', 'foo/bar1'],
-        ['foo/bar0', 'foo/bar2'],
-      ],
     })
 
     expect(res.children).equal([])
