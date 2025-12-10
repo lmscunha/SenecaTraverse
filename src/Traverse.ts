@@ -203,10 +203,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       rootEntity?: EntityID
       rootEntityId: string
     },
-  ): Promise<{
-    ok: boolean
-    children: ChildInstance[]
-  }> {
+  ): Promise<FindChildren> {
     const rootEntity: EntityID = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
     const customRef = options.customRef
