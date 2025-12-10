@@ -1763,6 +1763,61 @@ const __2 = __importDefault(require(".."));
             },
         ]);
     });
+    (0, node_test_1.test)('create-task', async () => {
+        const seneca = makeSeneca()
+            .use(__2.default, {
+            relations: {
+                parental: [
+                    ['foo/bar0', 'foo/bar1'],
+                    ['foo/bar0', 'foo/bar2'],
+                    ['foo/bar0', 'foo/zed0'],
+                    ['foo/bar1', 'foo/bar4'],
+                    ['foo/bar1', 'foo/bar5'],
+                    ['foo/bar2', 'foo/bar3'],
+                    ['foo/bar2', 'foo/bar9'],
+                    ['foo/zed0', 'foo/zed1'],
+                    ['foo/bar3', 'foo/bar6'],
+                    ['foo/bar4', 'foo/bar7'],
+                    ['foo/bar5', 'foo/bar8'],
+                    ['foo/zed1', 'foo/zed2'],
+                    ['foo/bar6', 'foo/bar10'],
+                    ['foo/bar7', 'foo/bar11'],
+                ],
+            },
+        })
+            .message('aim:ent,print:id', async function (msg) {
+            console.log('test', msg);
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/bar0';
+        // only level 1 entities actually exist
+        await seneca.entity('foo/bar1').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/bar2').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/zed0').save$({
+            bar0_id: rootEntityId,
+        });
+        const res = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId: rootEntityId,
+            taskMsg: 'aim:ent,print:id',
+        });
+        (0, code_1.expect)(res.ok).equal(true);
+        const runEntRes = await seneca.entity('sys/traverse').list$();
+        (0, code_1.expect)(runEntRes.length).equal(1);
+        const runEnt = runEntRes[0];
+        (0, code_1.expect)(runEnt.root_entity).equal(rootEntity);
+        (0, code_1.expect)(runEnt.root_id).equal(rootEntityId);
+        (0, code_1.expect)(runEnt.status).equal('created');
+        (0, code_1.expect)(runEnt.task_msg).equal('aim:ent,print:id');
+        (0, code_1.expect)(runEnt.total_tasks).equal(3);
+        (0, code_1.expect)(runEnt.completed_tasks).equal(0);
+        (0, code_1.expect)(runEnt.failed_tasks).equal(0);
+    });
 });
 function makeSeneca(opts = {}) {
     const seneca = (0, seneca_1.default)({ legacy: false }).test().use('promisify').use('entity');

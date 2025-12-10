@@ -15,6 +15,29 @@ type ChildInstance = {
   child_canon: EntityID
 }
 
+type Entity = {
+  save$: Function
+  load$: Function
+  list$: Function
+  remove$: Function
+}
+
+type RunEntity = {
+  id: string
+  root_entity: EntityID
+  root_id: string
+  task_msg: string
+  status: 'created' | 'completed' | 'failed'
+  total_tasks: number
+  completed_tasks: number
+  failed_tasks: number
+} & Entity
+
+interface FindChildren {
+  ok: boolean
+  children: ChildInstance[]
+}
+
 type TraverseOptionsFull = {
   debug: boolean
   rootEntity: EntityID
@@ -34,6 +57,15 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   seneca
     .fix('sys:traverse')
     .message(
+      'on:run,do:create',
+      {
+        rootEntity: Optional(String),
+        rootEntityId: String,
+        taskMsg: String,
+      },
+      msgCreateTaskRun,
+    )
+    .message(
       'find:deps',
       {
         rootEntity: Optional(String),
@@ -48,6 +80,62 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       },
       msgFindChildren,
     )
+
+  // Create a task entity for each child instance
+  async function msgCreateTaskRun(
+    this: any,
+    msg: {
+      rootEntity?: EntityID
+      rootEntityId: string
+      taskMsg: string
+    },
+  ): Promise<{
+    ok: boolean
+  }> {
+    const taskMsg = msg.taskMsg
+    const rootEntity = msg.rootEntity || options.rootEntity
+    const rootEntityId = msg.rootEntityId
+
+    const runEnt: RunEntity = await seneca.entity('sys/traverse').save$({
+      root_entity: rootEntity,
+      root_id: rootEntityId,
+      status: 'created',
+      task_msg: taskMsg,
+      total_tasks: 0,
+      completed_tasks: 0,
+      failed_tasks: 0,
+    })
+
+    const findChildrenRes: FindChildren = await seneca.post(
+      'sys:traverse,find:children',
+      {
+        rootEntity,
+        rootEntityId,
+      },
+    )
+
+    let totalTasks = 0
+
+    for (const child of findChildrenRes.children) {
+      await seneca.entity('sys/traversetask').save$({
+        run_id: runEnt.id,
+        parent_id: child.parent_id,
+        child_id: child.child_id,
+        parent_canon: child.parent_canon,
+        child_canon: child.child_canon,
+        status: 'pending',
+        retry: 0,
+        task_msg: runEnt.task_msg,
+      })
+
+      totalTasks++
+    }
+
+    runEnt.total_tasks = totalTasks
+    await runEnt.save$()
+
+    return { ok: true }
+  }
 
   // Returns a sorted list of entity pairs starting from a given entity.
   // In breadth-first order, sorting first by level, then alphabetically in each level.
