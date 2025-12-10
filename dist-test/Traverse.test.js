@@ -1696,6 +1696,104 @@ const __2 = __importDefault(require(".."));
             },
         ]);
     });
+    (0, node_test_1.test)('find-children-single-cycle', async () => {
+        const seneca = makeSeneca().use(__2.default, {
+            relations: {
+                parental: [
+                    ['A', 'B'],
+                    ['A', 'C'],
+                    ['C', 'E'],
+                    ['C', 'D'],
+                    ['E', 'G'],
+                    ['E', 'F'],
+                    ['F', 'H'],
+                    ['C', 'A'],
+                    ['N', 'M'],
+                ],
+            },
+        });
+        await seneca.ready();
+        let rootEntityId = '123';
+        const aEnt = await seneca.entity('A').save$({
+            C_id: rootEntityId,
+        });
+        const cEnt = await seneca.entity('C').save$({
+            id: rootEntityId,
+            A_id: aEnt.id,
+        });
+        const bEnt = await seneca.entity('B').save$({
+            A_id: aEnt.id,
+        });
+        const dEnt = await seneca.entity('D').save$({
+            C_id: cEnt.id,
+        });
+        const eEnt = await seneca.entity('E').save$({
+            C_id: cEnt.id,
+        });
+        const fEnt = await seneca.entity('F').save$({
+            E_id: eEnt.id,
+        });
+        const gEnt = await seneca.entity('G').save$({
+            E_id: eEnt.id,
+        });
+        const hEnt = await seneca.entity('H').save$({
+            F_id: fEnt.id,
+        });
+        const nEnt = await seneca.entity('N').save$();
+        await seneca.entity('M').save$({
+            N_id: nEnt.id,
+        });
+        const res = await seneca.post('sys:traverse,find:children', {
+            rootEntity: 'C',
+            rootEntityId: cEnt.id,
+        });
+        // Should traverse from C,
+        // including C->A but NOT A->C
+        (0, code_1.expect)(res.children).equal([
+            {
+                parent_id: rootEntityId,
+                child_id: aEnt.id,
+                parent_canon: 'C',
+                child_canon: 'A',
+            },
+            {
+                parent_id: rootEntityId,
+                child_id: dEnt.id,
+                parent_canon: 'C',
+                child_canon: 'D',
+            },
+            {
+                parent_id: rootEntityId,
+                child_id: eEnt.id,
+                parent_canon: 'C',
+                child_canon: 'E',
+            },
+            {
+                parent_id: aEnt.id,
+                child_id: bEnt.id,
+                parent_canon: 'A',
+                child_canon: 'B',
+            },
+            {
+                parent_id: eEnt.id,
+                child_id: fEnt.id,
+                parent_canon: 'E',
+                child_canon: 'F',
+            },
+            {
+                parent_id: eEnt.id,
+                child_id: gEnt.id,
+                parent_canon: 'E',
+                child_canon: 'G',
+            },
+            {
+                parent_id: fEnt.id,
+                child_id: hEnt.id,
+                parent_canon: 'F',
+                child_canon: 'H',
+            },
+        ]);
+    });
 });
 function makeSeneca(opts = {}) {
     const seneca = (0, seneca_1.default)({ legacy: false }).test().use('promisify').use('entity');

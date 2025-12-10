@@ -108,8 +108,11 @@ function Traverse(options) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
             a[1].localeCompare(b[1], undefined, { numeric: true }));
     }
-    function getEntityName(entity) {
-        return entity.split('/')[1] ?? '';
+    function getEntityName(entityId) {
+        const canonSeparatorIdx = entityId.lastIndexOf('/');
+        return canonSeparatorIdx === -1
+            ? entityId
+            : entityId.slice(canonSeparatorIdx + 1);
     }
 }
 // Default options.

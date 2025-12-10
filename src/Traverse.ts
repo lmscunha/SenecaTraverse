@@ -193,8 +193,11 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     )
   }
 
-  function getEntityName(entity: EntityID): string {
-    return entity.split('/')[1] ?? ''
+  function getEntityName(entityId: EntityID): string {
+    const canonSeparatorIdx = entityId.lastIndexOf('/')
+    return canonSeparatorIdx === -1
+      ? entityId
+      : entityId.slice(canonSeparatorIdx + 1)
   }
 }
 
