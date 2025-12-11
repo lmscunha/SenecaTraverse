@@ -52,12 +52,13 @@ function Traverse(options) {
         }
         return { ok: true, run: runEnt, dispatched };
     }
-    // Create a task entity for each child instance
+    // Create a run process and generate tasks
+    // for each child entity to be executed.
     async function msgCreateTaskRun(msg) {
         const taskMsg = msg.taskMsg;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
-        const runEnt = await seneca.entity('sys/traverse').save$({
+        let runEnt = await seneca.entity('sys/traverse').save$({
             root_entity: rootEntity,
             root_id: rootEntityId,
             status: 'created',
@@ -70,9 +71,9 @@ function Traverse(options) {
             rootEntity,
             rootEntityId,
         });
-        let totalTasks = 0;
-        for (const child of findChildrenRes.children) {
-            await seneca.entity('sys/traversetask').save$({
+        const tasksCreationPromises = [];
+        findChildrenRes.children.forEach((child) => {
+            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
                 run_id: runEnt.id,
                 parent_id: child.parent_id,
                 child_id: child.child_id,
@@ -81,12 +82,35 @@ function Traverse(options) {
                 status: 'pending',
                 retry: 0,
                 task_msg: runEnt.task_msg,
-            });
-            totalTasks++;
-        }
-        runEnt.total_tasks = totalTasks;
-        await runEnt.save$();
-        return { ok: true, run: runEnt };
+            }));
+        });
+        const tasksCreationRes = await Promise.allSettled(tasksCreationPromises);
+        let taskSuccessCount = 0;
+        let taskFailedCount = 0;
+        tasksCreationRes.forEach((taskCreation, idx) => {
+            if (taskCreation.status === 'fulfilled') {
+                taskSuccessCount++;
+            }
+            else {
+                taskFailedCount++;
+                const childrenData = findChildrenRes.children[idx];
+                // TODO: add proper logging and retry
+                console.error('task create failed for child_canon: ' +
+                    childrenData.child_canon +
+                    ' - child_id: ' +
+                    childrenData.child_id +
+                    ' - error: ' +
+                    taskCreation.reason);
+            }
+        });
+        runEnt.total_tasks = taskSuccessCount;
+        runEnt = await runEnt.save$();
+        return {
+            ok: true,
+            run: runEnt,
+            tasksCreated: taskSuccessCount,
+            tasksFailed: taskFailedCount,
+        };
     }
     // Execute a single task updating its
     // status afterwards.

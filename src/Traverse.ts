@@ -1,6 +1,6 @@
 /* Copyright © 2025 Seneca Project Contributors, MIT License. */
 
-import { Optional, Skip } from 'gubu'
+import { Optional } from 'gubu'
 
 type EntityID = string
 
@@ -154,7 +154,8 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     return { ok: true, run: runEnt, dispatched }
   }
 
-  // Create a task entity for each child instance
+  // Create a run process and generate tasks
+  // for each child entity to be executed.
   async function msgCreateTaskRun(
     this: any,
     msg: {
@@ -165,12 +166,14 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   ): Promise<{
     ok: boolean
     run: RunEntity
+    tasksCreated: number
+    tasksFailed: number
   }> {
     const taskMsg = msg.taskMsg
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
 
-    const runEnt: RunEntity = await seneca.entity('sys/traverse').save$({
+    let runEnt: RunEntity = await seneca.entity('sys/traverse').save$({
       root_entity: rootEntity,
       root_id: rootEntityId,
       status: 'created',
@@ -188,27 +191,57 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       },
     )
 
-    let totalTasks = 0
+    const tasksCreationPromises: Promise<TaskEntity>[] = []
 
-    for (const child of findChildrenRes.children) {
-      await seneca.entity('sys/traversetask').save$({
-        run_id: runEnt.id,
-        parent_id: child.parent_id,
-        child_id: child.child_id,
-        parent_canon: child.parent_canon,
-        child_canon: child.child_canon,
-        status: 'pending',
-        retry: 0,
-        task_msg: runEnt.task_msg,
-      })
+    findChildrenRes.children.forEach((child) => {
+      tasksCreationPromises.push(
+        seneca.entity('sys/traversetask').save$({
+          run_id: runEnt.id,
+          parent_id: child.parent_id,
+          child_id: child.child_id,
+          parent_canon: child.parent_canon,
+          child_canon: child.child_canon,
+          status: 'pending',
+          retry: 0,
+          task_msg: runEnt.task_msg,
+        }),
+      )
+    })
 
-      totalTasks++
+    const tasksCreationRes: PromiseSettledResult<TaskEntity>[] =
+      await Promise.allSettled(tasksCreationPromises)
+
+    let taskSuccessCount = 0
+    let taskFailedCount = 0
+
+    tasksCreationRes.forEach((taskCreation, idx) => {
+      if (taskCreation.status === 'fulfilled') {
+        taskSuccessCount++
+      } else {
+        taskFailedCount++
+        const childrenData = findChildrenRes.children[idx]
+
+        // TODO: add proper logging and retry
+        console.error(
+          'task create failed for child_canon: ' +
+            childrenData.child_canon +
+            ' - child_id: ' +
+            childrenData.child_id +
+            ' - error: ' +
+            taskCreation.reason,
+        )
+      }
+    })
+
+    runEnt.total_tasks = taskSuccessCount
+    runEnt = await runEnt.save$()
+
+    return {
+      ok: true,
+      run: runEnt,
+      tasksCreated: taskSuccessCount,
+      tasksFailed: taskFailedCount,
     }
-
-    runEnt.total_tasks = totalTasks
-    await runEnt.save$()
-
-    return { ok: true, run: runEnt }
   }
 
   // Execute a single task updating its
