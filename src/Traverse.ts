@@ -3,14 +3,15 @@
 import { Optional } from 'gubu'
 
 type EntityID = string
+type UUID = string
 
 type ParentChildRelation = [EntityID, EntityID]
 
 type Parental = ParentChildRelation[]
 
 type ChildInstance = {
-  parent_id: string
-  child_id: string
+  parent_id: UUID
+  child_id: UUID
   parent_canon: EntityID
   child_canon: EntityID
 }
@@ -314,8 +315,10 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     return { ok: true, task: task }
   }
 
-  // Returns a sorted list of entity pairs starting from a given entity.
-  // In breadth-first order, sorting first by level, then alphabetically in each level.
+  // Returns a sorted list of entity pairs
+  // starting from a given entity.
+  // In breadth-first order, sorting first by level,
+  // then alphabetically in each level.
   async function msgFindDeps(
     this: any,
     msg: {
@@ -373,12 +376,13 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     }
   }
 
-  // Returns all discovered child instances with their parent relationship.
+  // Returns all discovered child
+  // instances with their parent relationship.
   async function msgFindChildren(
     this: any,
     msg: {
       rootEntity?: EntityID
-      rootEntityId: string
+      rootEntityId: UUID
     },
   ): Promise<FindChildren> {
     const rootEntity: EntityID = msg.rootEntity || options.rootEntity
@@ -390,7 +394,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     const relationsQueue = relationsQueueRes.deps
 
     const result: ChildInstance[] = []
-    const parentInstanceMap = new Map<EntityID, Set<string>>()
+    const parentInstanceMap = new Map<EntityID, Set<UUID>>()
 
     parentInstanceMap.set(rootEntity, new Set([rootEntityId]))
 
