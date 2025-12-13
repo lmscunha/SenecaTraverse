@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
+    options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
     // const { Default } = seneca.valid
     seneca
         .fix('sys:traverse')
@@ -16,7 +17,7 @@ function Traverse(options) {
         runId: String,
     }, msgRunStart)
         .message('on:task,do:execute', {
-        taskId: String,
+        task: Object,
     }, msgTaskExecute)
         .message('find:deps', {
         rootEntity: (0, gubu_1.Optional)(String),
@@ -25,32 +26,33 @@ function Traverse(options) {
         rootEntity: (0, gubu_1.Optional)(String),
         rootEntityId: String,
     }, msgFindChildren);
-    //  Trigger a Run execution
+    // Start a run process execution for all
+    // its pending children tasks.
     async function msgRunStart(msg) {
         const runId = msg.runId;
         const runEnt = await seneca.entity('sys/traverse').load$({
             id: runId,
         });
         if (!runEnt?.id) {
-            return { ok: false };
+            return { ok: false, why: 'run-entity-not-found' };
         }
-        if (runEnt.status === 'completed') {
-            return { ok: true };
-        }
-        runEnt.status = 'active';
-        runEnt.started_at = Date.now();
-        const tasks = await seneca.entity('sys/traversetask').list$({
-            run_id: runId,
+        const nextTask = await seneca.entity('sys/traversetask').load$({
+            run_id: runEnt.id,
             status: 'pending',
         });
-        let dispatched = 0;
-        for (const task of tasks) {
-            await seneca.post('sys:traverse,on:task,do:execute', {
-                taskId: task.id,
-            });
-            dispatched++;
+        if (!nextTask?.id) {
+            runEnt.status = 'completed';
+            runEnt.completed_at = Date.now();
+            await runEnt.save$();
+            return { ok: true };
         }
-        return { ok: true, run: runEnt, dispatched };
+        runEnt.status = 'running';
+        runEnt.started_at = Date.now();
+        await runEnt.save$();
+        await seneca.post('sys:traverse,on:task,do:execute', {
+            task: nextTask,
+        });
+        return { ok: true, run: runEnt };
     }
     // Create a run process and generate tasks
     // for each child entity to be executed.
@@ -115,20 +117,44 @@ function Traverse(options) {
     // Execute a single task updating its
     // status afterwards.
     async function msgTaskExecute(msg) {
-        const taskId = msg.taskId;
-        const taskEnt = await seneca.entity('sys/traversetask').load$({
-            id: taskId,
-        });
-        if (!taskEnt?.id) {
-            return { ok: false, task: null };
+        const task = msg.task;
+        if (!task?.id) {
+            return { ok: false, why: 'task-not-found' };
         }
-        taskEnt.status = 'dispatched';
-        taskEnt.dispatched_at = Date.now();
-        await taskEnt.save$();
-        seneca.post(taskEnt.task_msg, {
-            taskEnt: taskEnt,
+        task.status = 'dispatched';
+        task.dispatched_at = Date.now();
+        await task.save$();
+        seneca.message(task.task_msg, async function (msg) {
+            const seneca = this;
+            const clientActMsg = await seneca.prior(msg);
+            const previousTask = msg.task_entity;
+            const taskRunParent = await seneca
+                .entity('sys/traverse')
+                .load$(previousTask.run_id);
+            if (taskRunParent.status !== 'running') {
+                return clientActMsg;
+            }
+            const nextTask = await seneca
+                .entity('sys/traversetask')
+                .load$({
+                run_id: previousTask.run_id,
+                status: 'pending',
+            });
+            if (!nextTask?.id) {
+                taskRunParent.status = 'completed';
+                await taskRunParent.save$();
+                return clientActMsg;
+            }
+            await seneca.post('sys:traverse,on:task,do:execute', {
+                task: nextTask,
+            });
+            return clientActMsg;
         });
-        return { ok: true, task: taskEnt };
+        // enqueue or process the current task
+        seneca.post(task.task_msg, {
+            task_entity: task,
+        });
+        return { ok: true, task: task };
     }
     // Returns a sorted list of entity pairs starting from a given entity.
     // In breadth-first order, sorting first by level, then alphabetically in each level.
