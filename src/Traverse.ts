@@ -283,7 +283,18 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       },
     )
 
-    const tasksCreationPromises: Promise<TaskEntity>[] = []
+    const tasksCreationPromises: Promise<TaskEntity>[] = [
+      seneca.entity('sys/traversetask').save$({
+        run_id: runEnt.id,
+        parent_id: rootEntityId,
+        child_id: rootEntityId,
+        parent_canon: rootEntity,
+        child_canon: rootEntity,
+        status: 'pending',
+        retry: 0,
+        task_msg: runEnt.task_msg,
+      }),
+    ]
 
     findChildrenRes.children.forEach((child) => {
       tasksCreationPromises.push(
@@ -354,6 +365,14 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       return { ok: false, why: 'task-not-found' }
     }
 
+    const taskRun: RunEntity = await seneca
+      .entity('sys/traverse')
+      .load$(task.run_id)
+
+    if (taskRun.completed_at) {
+      return { ok: true }
+    }
+
     task.status = 'dispatched'
     task.dispatched_at = Date.now()
     await task.save$()
@@ -383,7 +402,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
         taskRunParent.status = 'completed'
         await taskRunParent.save$()
 
-        return clientActMsg
+        return { ok: true }
       }
 
       await seneca.post('sys:traverse,on:task,do:execute', {
@@ -394,7 +413,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     })
 
     // enqueue or process the current task
-    seneca.post(task.task_msg, {
+    await seneca.post(task.task_msg, {
       task_entity: task,
     })
 
@@ -440,7 +459,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     runEnt.started_at = Date.now()
     await runEnt.save$()
 
-    await seneca.post('sys:traverse,on:task,do:execute', {
+    seneca.post('sys:traverse,on:task,do:execute', {
       task: nextTask,
     })
 

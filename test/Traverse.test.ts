@@ -2055,7 +2055,7 @@ describe('Traverse', () => {
     })
 
     expect(res.ok).true()
-    expect(res.tasksCreated).equal(3)
+    expect(res.tasksCreated).equal(4)
     expect(res.tasksFailed).equal(0)
 
     const runEntRes = await seneca.entity('sys/traverse').list$()
@@ -2067,7 +2067,7 @@ describe('Traverse', () => {
     expect(runEnt.root_id).equal(rootEntityId)
     expect(runEnt.status).equal('created')
     expect(runEnt.task_msg).equal('aim:task,print:id')
-    expect(runEnt.total_tasks).equal(3)
+    expect(runEnt.total_tasks).equal(4)
     expect(runEnt.completed_tasks).equal(0)
     expect(runEnt.failed_tasks).equal(0)
   })
@@ -2095,8 +2095,8 @@ describe('Traverse', () => {
 
     expect(createRunRes.ok).true()
     expect(createRunRes.run).to.exist()
-    expect(createRunRes.run.total_tasks).to.equal(0)
-    expect(createRunRes.tasksCreated).to.equal(0)
+    expect(createRunRes.run.total_tasks).to.equal(1)
+    expect(createRunRes.tasksCreated).to.equal(1)
     expect(createRunRes.tasksFailed).to.equal(0)
     expect(createRunRes.run.status).to.equal('created')
   })
@@ -2127,16 +2127,18 @@ describe('Traverse', () => {
     })
 
     expect(createRunRes.ok).true()
-    expect(createRunRes.tasksCreated).to.equal(1)
+    expect(createRunRes.tasksCreated).to.equal(2)
     expect(createRunRes.tasksFailed).to.equal(0)
-    expect(createRunRes.run.total_tasks).to.equal(1)
+    expect(createRunRes.run.total_tasks).to.equal(2)
 
     const tasks = await seneca.entity('sys/traversetask').list$({
       run_id: createRunRes.run.id,
     })
-    expect(tasks.length).to.equal(1)
+    expect(tasks.length).to.equal(2)
     expect(tasks[0].status).to.equal('pending')
     expect(tasks[0].task_msg).to.equal('aim:task,print:id')
+    expect(tasks[1].status).to.equal('pending')
+    expect(tasks[1].task_msg).to.equal('aim:task,print:id')
   })
 
   test('create-run-nested-hierarchy', async () => {
@@ -2238,14 +2240,14 @@ describe('Traverse', () => {
     })
 
     expect(createRunRes.ok).true()
-    expect(createRunRes.tasksCreated).to.equal(14)
+    expect(createRunRes.tasksCreated).to.equal(15)
     expect(createRunRes.tasksFailed).to.equal(0)
-    expect(createRunRes.run.total_tasks).to.equal(14)
+    expect(createRunRes.run.total_tasks).to.equal(15)
 
     const tasks = await seneca.entity('sys/traversetask').list$({
       run_id: createRunRes.run.id,
     })
-    expect(tasks.length).to.equal(14)
+    expect(tasks.length).to.equal(15)
   })
 
   test('execute-task', async () => {

@@ -1807,7 +1807,7 @@ const __2 = __importDefault(require(".."));
             taskMsg: 'aim:task,print:id',
         });
         (0, code_1.expect)(res.ok).true();
-        (0, code_1.expect)(res.tasksCreated).equal(3);
+        (0, code_1.expect)(res.tasksCreated).equal(4);
         (0, code_1.expect)(res.tasksFailed).equal(0);
         const runEntRes = await seneca.entity('sys/traverse').list$();
         const runEnt = runEntRes[0];
@@ -1816,7 +1816,7 @@ const __2 = __importDefault(require(".."));
         (0, code_1.expect)(runEnt.root_id).equal(rootEntityId);
         (0, code_1.expect)(runEnt.status).equal('created');
         (0, code_1.expect)(runEnt.task_msg).equal('aim:task,print:id');
-        (0, code_1.expect)(runEnt.total_tasks).equal(3);
+        (0, code_1.expect)(runEnt.total_tasks).equal(4);
         (0, code_1.expect)(runEnt.completed_tasks).equal(0);
         (0, code_1.expect)(runEnt.failed_tasks).equal(0);
     });
@@ -1840,8 +1840,8 @@ const __2 = __importDefault(require(".."));
         });
         (0, code_1.expect)(createRunRes.ok).true();
         (0, code_1.expect)(createRunRes.run).to.exist();
-        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(0);
-        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(0);
+        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(1);
+        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(1);
         (0, code_1.expect)(createRunRes.tasksFailed).to.equal(0);
         (0, code_1.expect)(createRunRes.run.status).to.equal('created');
     });
@@ -1867,15 +1867,17 @@ const __2 = __importDefault(require(".."));
             taskMsg: 'aim:task,print:id',
         });
         (0, code_1.expect)(createRunRes.ok).true();
-        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(1);
+        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(2);
         (0, code_1.expect)(createRunRes.tasksFailed).to.equal(0);
-        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(1);
+        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(2);
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: createRunRes.run.id,
         });
-        (0, code_1.expect)(tasks.length).to.equal(1);
+        (0, code_1.expect)(tasks.length).to.equal(2);
         (0, code_1.expect)(tasks[0].status).to.equal('pending');
         (0, code_1.expect)(tasks[0].task_msg).to.equal('aim:task,print:id');
+        (0, code_1.expect)(tasks[1].status).to.equal('pending');
+        (0, code_1.expect)(tasks[1].task_msg).to.equal('aim:task,print:id');
     });
     (0, node_test_1.test)('create-run-nested-hierarchy', async () => {
         const seneca = makeSeneca()
@@ -1963,13 +1965,13 @@ const __2 = __importDefault(require(".."));
             taskMsg: 'aim:task,print:id',
         });
         (0, code_1.expect)(createRunRes.ok).true();
-        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(14);
+        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(15);
         (0, code_1.expect)(createRunRes.tasksFailed).to.equal(0);
-        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(14);
+        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(15);
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: createRunRes.run.id,
         });
-        (0, code_1.expect)(tasks.length).to.equal(14);
+        (0, code_1.expect)(tasks.length).to.equal(15);
     });
     (0, node_test_1.test)('execute-task', async () => {
         const seneca = makeSeneca()

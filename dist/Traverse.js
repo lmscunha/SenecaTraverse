@@ -138,7 +138,18 @@ function Traverse(options) {
             rootEntity,
             rootEntityId,
         });
-        const tasksCreationPromises = [];
+        const tasksCreationPromises = [
+            seneca.entity('sys/traversetask').save$({
+                run_id: runEnt.id,
+                parent_id: rootEntityId,
+                child_id: rootEntityId,
+                parent_canon: rootEntity,
+                child_canon: rootEntity,
+                status: 'pending',
+                retry: 0,
+                task_msg: runEnt.task_msg,
+            }),
+        ];
         findChildrenRes.children.forEach((child) => {
             tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
                 run_id: runEnt.id,
@@ -186,6 +197,12 @@ function Traverse(options) {
         if (!task?.id) {
             return { ok: false, why: 'task-not-found' };
         }
+        const taskRun = await seneca
+            .entity('sys/traverse')
+            .load$(task.run_id);
+        if (taskRun.completed_at) {
+            return { ok: true };
+        }
         task.status = 'dispatched';
         task.dispatched_at = Date.now();
         await task.save$();
@@ -208,7 +225,7 @@ function Traverse(options) {
             if (!nextTask?.id) {
                 taskRunParent.status = 'completed';
                 await taskRunParent.save$();
-                return clientActMsg;
+                return { ok: true };
             }
             await seneca.post('sys:traverse,on:task,do:execute', {
                 task: nextTask,
@@ -216,7 +233,7 @@ function Traverse(options) {
             return clientActMsg;
         });
         // enqueue or process the current task
-        seneca.post(task.task_msg, {
+        await seneca.post(task.task_msg, {
             task_entity: task,
         });
         return { ok: true, task: task };
@@ -244,7 +261,7 @@ function Traverse(options) {
         runEnt.status = 'running';
         runEnt.started_at = Date.now();
         await runEnt.save$();
-        await seneca.post('sys:traverse,on:task,do:execute', {
+        seneca.post('sys:traverse,on:task,do:execute', {
             task: nextTask,
         });
         return { ok: true, run: runEnt };
