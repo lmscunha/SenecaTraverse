@@ -1845,6 +1845,32 @@ const __2 = __importDefault(require(".."));
         (0, code_1.expect)(createRunRes.tasksFailed).to.equal(0);
         (0, code_1.expect)(createRunRes.run.status).to.equal('created');
     });
+    (0, node_test_1.test)('create-run-empty-children-no-root-execute', async () => {
+        const seneca = makeSeneca()
+            .use(__2.default, {
+            relations: {
+                parental: [],
+            },
+            rootExecute: false,
+        })
+            .message('aim:task,print:id', async function (msg) {
+            return;
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/bar0';
+        const createRunRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId,
+            taskMsg: 'aim:task,print:id',
+        });
+        (0, code_1.expect)(createRunRes.ok).true();
+        (0, code_1.expect)(createRunRes.run).to.exist();
+        (0, code_1.expect)(createRunRes.run.total_tasks).to.equal(0);
+        (0, code_1.expect)(createRunRes.tasksCreated).to.equal(0);
+        (0, code_1.expect)(createRunRes.tasksFailed).to.equal(0);
+        (0, code_1.expect)(createRunRes.run.status).to.equal('created');
+    });
     (0, node_test_1.test)('create-run-single-child', async () => {
         const seneca = makeSeneca()
             .use(__2.default, {

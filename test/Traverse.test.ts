@@ -2101,6 +2101,36 @@ describe('Traverse', () => {
     expect(createRunRes.run.status).to.equal('created')
   })
 
+  test('create-run-empty-children-no-root-execute', async () => {
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        relations: {
+          parental: [],
+        },
+        rootExecute: false,
+      })
+      .message('aim:task,print:id', async function (msg: any) {
+        return
+      })
+    await seneca.ready()
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/bar0'
+
+    const createRunRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,print:id',
+    })
+
+    expect(createRunRes.ok).true()
+    expect(createRunRes.run).to.exist()
+    expect(createRunRes.run.total_tasks).to.equal(0)
+    expect(createRunRes.tasksCreated).to.equal(0)
+    expect(createRunRes.tasksFailed).to.equal(0)
+    expect(createRunRes.run.status).to.equal('created')
+  })
+
   test('create-run-single-child', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
