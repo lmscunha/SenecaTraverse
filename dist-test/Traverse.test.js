@@ -2057,6 +2057,7 @@ const __2 = __importDefault(require(".."));
         })
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task_entity;
+            // console.log('task id: ', taskEnt.id)
             taskEnt.status = 'done';
             await taskEnt.save$();
             return { ok: true, a: 1 };
@@ -2090,13 +2091,16 @@ const __2 = __importDefault(require(".."));
             runId: runEnt.id,
         });
         (0, code_1.expect)(startRunRes.ok).true();
-        // tasks = await seneca.entity('sys/traversetask').list$({
-        //   run_id: runEnt.id,
-        // })
-        //
-        // for (const task of tasks) {
-        //   expect(task.status).equal('done')
-        // }
+        // TODO: improve async validation
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        await sleep(100);
+        tasks = await seneca.entity('sys/traversetask').list$({
+            run_id: runEnt.id,
+        });
+        // console.log('tasks ', tasks)
+        for (const task of tasks) {
+            (0, code_1.expect)(task.status).equal('done');
+        }
     });
 });
 function makeSeneca(opts = {}) {

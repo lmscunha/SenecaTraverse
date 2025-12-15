@@ -2347,6 +2347,7 @@ describe('Traverse', () => {
       })
       .message('aim:task,print:id', async function (this: any, msg: any) {
         const taskEnt = msg.task_entity
+        // console.log('task id: ', taskEnt.id)
 
         taskEnt.status = 'done'
         await taskEnt.save$()
@@ -2393,13 +2394,19 @@ describe('Traverse', () => {
 
     expect(startRunRes.ok).true()
 
-    // tasks = await seneca.entity('sys/traversetask').list$({
-    //   run_id: runEnt.id,
-    // })
-    //
-    // for (const task of tasks) {
-    //   expect(task.status).equal('done')
-    // }
+    // TODO: improve async validation
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms))
+    await sleep(100)
+
+    tasks = await seneca.entity('sys/traversetask').list$({
+      run_id: runEnt.id,
+    })
+    // console.log('tasks ', tasks)
+
+    for (const task of tasks) {
+      expect(task.status).equal('done')
+    }
   })
 })
 
