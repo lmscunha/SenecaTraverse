@@ -250,8 +250,8 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     this: any,
     msg: {
       rootEntity?: EntityID
-      rootEntityId: string
-      taskMsg: string
+      rootEntityId: UUID
+      taskMsg: Message
     },
   ): Promise<{
     ok: boolean
@@ -263,7 +263,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
 
-    let runEnt: RunEntity = await seneca.entity('sys/traverse').save$({
+    const run: RunEntity = await seneca.entity('sys/traverse').save$({
       root_entity: rootEntity,
       root_id: rootEntityId,
       status: 'created',
@@ -273,7 +273,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       failed_tasks: 0,
     })
 
-    // Create Run - Tasks relations for Run find:children process
+    // Create [Run, Tasks] relation for find:children processing
     options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
 
     const findChildrenRes: FindChildren = await seneca.post(
@@ -287,18 +287,18 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     const tasksCreationPromises: Promise<TaskEntity>[] = []
 
     if (options.rootExecute) {
-      // process the action over the root data store as well
+      // Process the action over the root data storage,
       // not only on its children.
       tasksCreationPromises.push(
         seneca.entity('sys/traversetask').save$({
-          run_id: runEnt.id,
+          run_id: run.id,
           parent_id: rootEntityId,
           child_id: rootEntityId,
           parent_canon: rootEntity,
           child_canon: rootEntity,
           status: 'pending',
           retry: 0,
-          task_msg: runEnt.task_msg,
+          task_msg: run.task_msg,
         }),
       )
     }
@@ -306,14 +306,14 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     findChildrenRes.children.forEach((child) => {
       tasksCreationPromises.push(
         seneca.entity('sys/traversetask').save$({
-          run_id: runEnt.id,
+          run_id: run.id,
           parent_id: child.parent_id,
           child_id: child.child_id,
           parent_canon: child.parent_canon,
           child_canon: child.child_canon,
           status: 'pending',
           retry: 0,
-          task_msg: runEnt.task_msg,
+          task_msg: run.task_msg,
         }),
       )
     })
@@ -343,14 +343,14 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       }
     })
 
-    runEnt.total_tasks = taskSuccessCount
-    runEnt = await runEnt.save$()
+    run.total_tasks = taskSuccessCount
+    await run.save$()
 
-    processNextTask(runEnt.task_msg)
+    processNextTask(run.task_msg)
 
     return {
       ok: true,
-      run: runEnt,
+      run,
       tasksCreated: taskSuccessCount,
       tasksFailed: taskFailedCount,
     }
