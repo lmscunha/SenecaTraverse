@@ -49,11 +49,6 @@ type TaskEntity = {
 } & ChildInstance &
   Entity
 
-interface FindChildren {
-  ok: boolean
-  children: ChildInstance[]
-}
-
 type TraverseOptionsFull = {
   debug: boolean
   rootExecute: boolean
@@ -62,6 +57,15 @@ type TraverseOptionsFull = {
     parental: Parental
   }
   customRef: Record<EntityID, string>
+}
+
+interface FindChildren {
+  ok: boolean
+  children: ChildInstance[]
+}
+
+interface ClientActOut {
+  task: TaskEntity
 }
 
 export type TraverseOptions = Partial<TraverseOptionsFull>
@@ -378,7 +382,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
     // enqueue or process the current task
     await seneca.post(task.task_msg, {
-      task_entity: task,
+      task,
     })
 
     return { ok: true }
@@ -452,11 +456,11 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   function processNextTask(taskMsg: Message): void {
     seneca.message(taskMsg, async function (this: any, msg: any) {
       const seneca = this
-      const clientActMsg = await seneca.prior(msg)
+      const clientActMsg: ClientActOut = await seneca.prior(msg)
 
       const run: RunEntity = await seneca
         .entity('sys/traverse')
-        .load$(msg.task_entity?.run_id)
+        .load$(msg.task.run_id)
 
       if (run?.status !== 'active') {
         return clientActMsg

@@ -206,7 +206,7 @@ function Traverse(options) {
         await task.save$();
         // enqueue or process the current task
         await seneca.post(task.task_msg, {
-            task_entity: task,
+            task,
         });
         return { ok: true };
     }
@@ -256,7 +256,7 @@ function Traverse(options) {
             const clientActMsg = await seneca.prior(msg);
             const run = await seneca
                 .entity('sys/traverse')
-                .load$(msg.task_entity?.run_id);
+                .load$(msg.task.run_id);
             if (run?.status !== 'active') {
                 return clientActMsg;
             }

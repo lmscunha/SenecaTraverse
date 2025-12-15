@@ -1996,7 +1996,7 @@ const __2 = __importDefault(require(".."));
             },
         })
             .message('aim:task,print:id', async function (msg) {
-            const taskEnt = msg.task_entity;
+            const taskEnt = msg.task;
             // console.log('task_id', taskEnt.id)
             taskEnt.status = 'done';
             await taskEnt.save$();
@@ -2056,7 +2056,7 @@ const __2 = __importDefault(require(".."));
             },
         })
             .message('aim:task,print:id', async function (msg) {
-            const taskEnt = msg.task_entity;
+            const taskEnt = msg.task;
             // console.log('task id: ', taskEnt.id)
             taskEnt.status = 'done';
             await taskEnt.save$();

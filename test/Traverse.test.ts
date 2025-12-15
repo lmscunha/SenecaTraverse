@@ -2273,7 +2273,7 @@ describe('Traverse', () => {
         },
       })
       .message('aim:task,print:id', async function (msg: any) {
-        const taskEnt = msg.task_entity
+        const taskEnt = msg.task
 
         // console.log('task_id', taskEnt.id)
 
@@ -2346,7 +2346,7 @@ describe('Traverse', () => {
         },
       })
       .message('aim:task,print:id', async function (this: any, msg: any) {
-        const taskEnt = msg.task_entity
+        const taskEnt = msg.task
         // console.log('task id: ', taskEnt.id)
 
         taskEnt.status = 'done'
