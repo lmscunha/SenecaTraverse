@@ -231,7 +231,7 @@ function Traverse(options) {
             await runEnt.save$();
             return { ok: true, run: runEnt };
         }
-        runEnt.status = 'running';
+        runEnt.status = 'active';
         runEnt.started_at = Date.now();
         await runEnt.save$();
         // execute a task async
@@ -254,25 +254,25 @@ function Traverse(options) {
         seneca.message(taskMsg, async function (msg) {
             const seneca = this;
             const clientActMsg = await seneca.prior(msg);
-            const runEnt = await seneca
+            const run = await seneca
                 .entity('sys/traverse')
                 .load$(msg.task_entity?.run_id);
-            if (runEnt.status !== 'running') {
+            if (run?.status !== 'active') {
                 return clientActMsg;
             }
             const nextTask = await seneca
                 .entity('sys/traversetask')
                 .load$({
-                run_id: runEnt.id,
+                run_id: run.id,
                 status: 'pending',
             });
             if (!nextTask?.id) {
-                runEnt.status = 'completed';
-                await runEnt.save$();
+                run.status = 'completed';
+                await run.save$();
                 return { ok: true };
             }
             // Dispatch the next pending task
-            await seneca.post('sys:traverse,on:task,do:execute', {
+            seneca.post('sys:traverse,on:task,do:execute', {
                 task: nextTask,
             });
             return clientActMsg;
