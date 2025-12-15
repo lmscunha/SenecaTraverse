@@ -2381,6 +2381,7 @@ describe('Traverse', () => {
 
         taskEnt.status = 'done'
         await taskEnt.save$()
+
         return { ok: true, a: 1 }
       })
 

@@ -41,7 +41,7 @@ type RunEntity = {
 type TaskEntity = {
   id: UUID
   run_id: UUID
-  status: 'pending' | 'dispatched' | 'done' | 'failed'
+  status: 'pending' | 'dispatched'
   retry: number
   task_msg: Message
   dispatched_at?: Timestamp
@@ -64,7 +64,7 @@ interface FindChildren {
   children: ChildInstance[]
 }
 
-interface ClientActOut {
+interface TaskDispatch {
   task: TaskEntity
 }
 
@@ -360,8 +360,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     }
   }
 
-  // Execute a single task updating its
-  // status afterwards.
+  // Execute a single Run task.
   async function msgTaskExecute(
     this: any,
     msg: {
@@ -372,7 +371,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   }> {
     const task = msg.task
 
-    if (!task?.task_msg) {
+    if (task.status !== 'pending') {
       return { ok: true }
     }
 
@@ -380,10 +379,10 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     task.dispatched_at = Date.now()
     await task.save$()
 
-    // enqueue or process the current task
-    await seneca.post(task.task_msg, {
+    const dispatchArg: TaskDispatch = {
       task,
-    })
+    }
+    await seneca.post(task.task_msg, dispatchArg)
 
     return { ok: true }
   }
@@ -453,10 +452,11 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       : entityId.slice(canonSeparatorIdx + 1)
   }
 
+  // It triggers before every client msg act return.
   function processNextTask(taskMsg: Message): void {
     seneca.message(taskMsg, async function (this: any, msg: any) {
       const seneca = this
-      const clientActMsg: ClientActOut = await seneca.prior(msg)
+      const clientActMsg: TaskDispatch = await seneca.prior(msg)
 
       const run: RunEntity = await seneca
         .entity('sys/traverse')

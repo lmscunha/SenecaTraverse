@@ -194,20 +194,19 @@ function Traverse(options) {
             tasksFailed: taskFailedCount,
         };
     }
-    // Execute a single task updating its
-    // status afterwards.
+    // Execute a single Run task.
     async function msgTaskExecute(msg) {
         const task = msg.task;
-        if (!task?.task_msg) {
+        if (task.status !== 'pending') {
             return { ok: true };
         }
         task.status = 'dispatched';
         task.dispatched_at = Date.now();
         await task.save$();
-        // enqueue or process the current task
-        await seneca.post(task.task_msg, {
+        const dispatchArg = {
             task,
-        });
+        };
+        await seneca.post(task.task_msg, dispatchArg);
         return { ok: true };
     }
     // Start a run process execution for all
@@ -250,6 +249,7 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
+    // It triggers before every client msg act return.
     function processNextTask(taskMsg) {
         seneca.message(taskMsg, async function (msg) {
             const seneca = this;
