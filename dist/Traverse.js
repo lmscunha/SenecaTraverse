@@ -213,31 +213,31 @@ function Traverse(options) {
     // its pending children tasks.
     async function msgRunStart(msg) {
         const runId = msg.runId;
-        const runEnt = await seneca.entity('sys/traverse').load$({
+        const run = await seneca.entity('sys/traverse').load$({
             id: runId,
         });
-        if (!runEnt?.id) {
+        if (!run?.id) {
             return { ok: false, why: 'run-entity-not-found' };
         }
         // Dispatch the next pending task
         const nextTask = await seneca.entity('sys/traversetask').load$({
-            run_id: runEnt.id,
+            run_id: run.id,
             status: 'pending',
         });
         if (!nextTask?.id) {
-            runEnt.status = 'completed';
-            runEnt.completed_at = Date.now();
-            await runEnt.save$();
-            return { ok: true, run: runEnt };
+            run.status = 'completed';
+            run.completed_at = Date.now();
+            await run.save$();
+            return { ok: true, run };
         }
-        runEnt.status = 'active';
-        runEnt.started_at = Date.now();
-        await runEnt.save$();
+        run.status = 'active';
+        run.started_at = Date.now();
+        await run.save$();
         // execute a task async
         seneca.post('sys:traverse,on:task,do:execute', {
             task: nextTask,
         });
-        return { ok: true, run: runEnt };
+        return { ok: true, run };
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
