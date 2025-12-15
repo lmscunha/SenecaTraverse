@@ -405,32 +405,31 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       id: runId,
     })
 
-    if (!run?.id) {
+    if (!run?.status) {
       return { ok: false, why: 'run-entity-not-found' }
     }
 
-    // Dispatch the next pending task
-    const nextTask: TaskEntity = await seneca.entity('sys/traversetask').load$({
-      run_id: run.id,
-      status: 'pending',
-    })
-
-    if (!nextTask?.id) {
-      run.status = 'completed'
-      run.completed_at = Date.now()
-      await run.save$()
-
-      return { ok: true, run }
+    if (run.status === 'completed' || run.status === 'active') {
+      return { ok: true }
     }
 
     run.status = 'active'
     run.started_at = Date.now()
     await run.save$()
 
+    const nextTask: TaskEntity = await seneca.entity('sys/traversetask').load$({
+      run_id: run.id,
+      status: 'pending',
+    })
+
     // execute a task async
     seneca.post('sys:traverse,on:task,do:execute', {
       task: nextTask,
     })
+
+    //TODO: update proceesNextTask to load and process
+    // adding a enqueue to invoke prior ?
+    // processNextTask(run.task_msg)
 
     return { ok: true, run }
   }
