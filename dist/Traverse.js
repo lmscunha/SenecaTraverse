@@ -4,8 +4,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
-    options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
-    // const { Default } = seneca.valid
     seneca
         .fix('sys:traverse')
         .message('find:deps', {
@@ -134,12 +132,17 @@ function Traverse(options) {
             completed_tasks: 0,
             failed_tasks: 0,
         });
+        // Create Run - Tasks relations for Run find:children process
+        options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
         const findChildrenRes = await seneca.post('sys:traverse,find:children', {
             rootEntity,
             rootEntityId,
         });
-        const tasksCreationPromises = [
-            seneca.entity('sys/traversetask').save$({
+        const tasksCreationPromises = [];
+        if (options.rootExecute) {
+            // process the action over the root data store as well
+            // not only on its children.
+            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
                 run_id: runEnt.id,
                 parent_id: rootEntityId,
                 child_id: rootEntityId,
@@ -148,8 +151,8 @@ function Traverse(options) {
                 status: 'pending',
                 retry: 0,
                 task_msg: runEnt.task_msg,
-            }),
-        ];
+            }));
+        }
         findChildrenRes.children.forEach((child) => {
             tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
                 run_id: runEnt.id,
@@ -183,32 +186,7 @@ function Traverse(options) {
         });
         runEnt.total_tasks = taskSuccessCount;
         runEnt = await runEnt.save$();
-        seneca.message(runEnt.task_msg, async function (msg) {
-            const seneca = this;
-            const clientActMsg = await seneca.prior(msg);
-            const runEnt = await seneca
-                .entity('sys/traverse')
-                .load$(msg.task_entity?.run_id);
-            if (runEnt.status !== 'running') {
-                return clientActMsg;
-            }
-            const nextTask = await seneca
-                .entity('sys/traversetask')
-                .load$({
-                run_id: runEnt.id,
-                status: 'pending',
-            });
-            if (!nextTask?.id) {
-                runEnt.status = 'completed';
-                await runEnt.save$();
-                return { ok: true };
-            }
-            // Dispatch the next pending task
-            await seneca.post('sys:traverse,on:task,do:execute', {
-                task: nextTask,
-            });
-            return clientActMsg;
-        });
+        processNextTask(runEnt.task_msg);
         return {
             ok: true,
             run: runEnt,
@@ -272,11 +250,40 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
+    function processNextTask(taskMsg) {
+        seneca.message(taskMsg, async function (msg) {
+            const seneca = this;
+            const clientActMsg = await seneca.prior(msg);
+            const runEnt = await seneca
+                .entity('sys/traverse')
+                .load$(msg.task_entity?.run_id);
+            if (runEnt.status !== 'running') {
+                return clientActMsg;
+            }
+            const nextTask = await seneca
+                .entity('sys/traversetask')
+                .load$({
+                run_id: runEnt.id,
+                status: 'pending',
+            });
+            if (!nextTask?.id) {
+                runEnt.status = 'completed';
+                await runEnt.save$();
+                return { ok: true };
+            }
+            // Dispatch the next pending task
+            await seneca.post('sys:traverse,on:task,do:execute', {
+                task: nextTask,
+            });
+            return clientActMsg;
+        });
+    }
 }
 // Default options.
 const defaults = {
     // TODO: Enable debug logging
     debug: false,
+    rootExecute: true,
     rootEntity: 'sys/user',
     relations: {
         parental: [],

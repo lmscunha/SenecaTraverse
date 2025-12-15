@@ -56,6 +56,7 @@ interface FindChildren {
 
 type TraverseOptionsFull = {
   debug: boolean
+  rootExecute: boolean
   rootEntity: EntityID
   relations: {
     parental: Parental
@@ -67,9 +68,6 @@ export type TraverseOptions = Partial<TraverseOptionsFull>
 
 function Traverse(this: any, options: TraverseOptionsFull) {
   const seneca: any = this
-  options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
-
-  // const { Default } = seneca.valid
 
   seneca
     .fix('sys:traverse')
@@ -275,6 +273,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       failed_tasks: 0,
     })
 
+    // Create Run - Tasks relations for Run find:children process
+    options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
+
     const findChildrenRes: FindChildren = await seneca.post(
       'sys:traverse,find:children',
       {
@@ -283,18 +284,24 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       },
     )
 
-    const tasksCreationPromises: Promise<TaskEntity>[] = [
-      seneca.entity('sys/traversetask').save$({
-        run_id: runEnt.id,
-        parent_id: rootEntityId,
-        child_id: rootEntityId,
-        parent_canon: rootEntity,
-        child_canon: rootEntity,
-        status: 'pending',
-        retry: 0,
-        task_msg: runEnt.task_msg,
-      }),
-    ]
+    const tasksCreationPromises: Promise<TaskEntity>[] = []
+
+    if (options.rootExecute) {
+      // process the action over the root data store as well
+      // not only on its children.
+      tasksCreationPromises.push(
+        seneca.entity('sys/traversetask').save$({
+          run_id: runEnt.id,
+          parent_id: rootEntityId,
+          child_id: rootEntityId,
+          parent_canon: rootEntity,
+          child_canon: rootEntity,
+          status: 'pending',
+          retry: 0,
+          task_msg: runEnt.task_msg,
+        }),
+      )
+    }
 
     findChildrenRes.children.forEach((child) => {
       tasksCreationPromises.push(
@@ -339,40 +346,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     runEnt.total_tasks = taskSuccessCount
     runEnt = await runEnt.save$()
 
-    seneca.message(runEnt.task_msg, async function (this: any, msg: any) {
-      const seneca = this
-
-      const clientActMsg = await seneca.prior(msg)
-
-      const runEnt: RunEntity = await seneca
-        .entity('sys/traverse')
-        .load$(msg.task_entity?.run_id)
-
-      if (runEnt.status !== 'running') {
-        return clientActMsg
-      }
-
-      const nextTask: TaskEntity = await seneca
-        .entity('sys/traversetask')
-        .load$({
-          run_id: runEnt.id,
-          status: 'pending',
-        })
-
-      if (!nextTask?.id) {
-        runEnt.status = 'completed'
-        await runEnt.save$()
-
-        return { ok: true }
-      }
-
-      // Dispatch the next pending task
-      await seneca.post('sys:traverse,on:task,do:execute', {
-        task: nextTask,
-      })
-
-      return clientActMsg
-    })
+    processNextTask(runEnt.task_msg)
 
     return {
       ok: true,
@@ -474,12 +448,50 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       ? entityId
       : entityId.slice(canonSeparatorIdx + 1)
   }
+
+  function processNextTask(taskMsg: Message): void {
+    seneca.message(taskMsg, async function (this: any, msg: any) {
+      const seneca = this
+
+      const clientActMsg = await seneca.prior(msg)
+
+      const runEnt: RunEntity = await seneca
+        .entity('sys/traverse')
+        .load$(msg.task_entity?.run_id)
+
+      if (runEnt.status !== 'running') {
+        return clientActMsg
+      }
+
+      const nextTask: TaskEntity = await seneca
+        .entity('sys/traversetask')
+        .load$({
+          run_id: runEnt.id,
+          status: 'pending',
+        })
+
+      if (!nextTask?.id) {
+        runEnt.status = 'completed'
+        await runEnt.save$()
+
+        return { ok: true }
+      }
+
+      // Dispatch the next pending task
+      await seneca.post('sys:traverse,on:task,do:execute', {
+        task: nextTask,
+      })
+
+      return clientActMsg
+    })
+  }
 }
 
 // Default options.
 const defaults: TraverseOptionsFull = {
   // TODO: Enable debug logging
   debug: false,
+  rootExecute: true,
   rootEntity: 'sys/user',
   relations: {
     parental: [],
