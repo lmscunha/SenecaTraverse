@@ -182,7 +182,7 @@ function Traverse(options) {
         });
         run.total_tasks = taskSuccessCount;
         await run.save$();
-        setUpTaskManager(run.id, run.task_msg);
+        defineProcessHandler(run.id, run.task_msg);
         return {
             ok: true,
             run,
@@ -238,7 +238,7 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
-    function setUpTaskManager(runId, taskMsg) {
+    function defineProcessHandler(runId, taskMsg) {
         seneca.message(taskMsg, async function (msg) {
             const seneca = this;
             const clientActMsg = await seneca.prior(msg);
