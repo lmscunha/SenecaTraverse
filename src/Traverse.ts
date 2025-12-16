@@ -41,10 +41,9 @@ type RunEntity = {
 type TaskEntity = {
   id: UUID
   run_id: UUID
-  status: 'pending' | 'dispatched'
+  status: 'pending' | 'dispatched' | 'completed' | 'failed'
   task_msg: Message
   dispatched_at?: Timestamp
-  completed_at?: Timestamp
 } & ChildInstance &
   Entity
 
@@ -276,7 +275,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       failed_tasks: 0,
     })
 
-    // Create [Run, Tasks] relation for find:children processing
+    // Create [Run, Tasks] relation for Run find:children processing
     options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
 
     const findChildrenRes: FindChildren = await seneca.post(
@@ -384,8 +383,8 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
-  // Start a run process execution for all
-  // its pending children tasks.
+  // Start a run process execution,
+  // dispatching the next pending child task.
   async function msgRunStart(
     this: any,
     msg: {

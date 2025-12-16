@@ -132,7 +132,7 @@ function Traverse(options) {
             completed_tasks: 0,
             failed_tasks: 0,
         });
-        // Create [Run, Tasks] relation for find:children processing
+        // Create [Run, Tasks] relation for Run find:children processing
         options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
         const findChildrenRes = await seneca.post('sys:traverse,find:children', {
             rootEntity,
@@ -207,8 +207,8 @@ function Traverse(options) {
         await seneca.post(task.task_msg, dispatchArg);
         return { ok: true };
     }
-    // Start a run process execution for all
-    // its pending children tasks.
+    // Start a run process execution,
+    // dispatching the next pending child task.
     async function msgRunStart(msg) {
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
