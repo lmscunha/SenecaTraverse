@@ -275,9 +275,6 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       failed_tasks: 0,
     })
 
-    // Create [Run, Tasks] relation for Run find:children processing
-    options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
-
     const findChildrenRes: FindChildren = await seneca.post(
       'sys:traverse,find:children',
       {
