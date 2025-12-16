@@ -350,7 +350,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     run.total_tasks = taskSuccessCount
     await run.save$()
 
-    processNextTask(run.task_msg)
+    setUpTaskManager(run.id, run.task_msg)
 
     return {
       ok: true,
@@ -401,9 +401,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   }> {
     const runId = msg.runId
 
-    const run: RunEntity = await seneca.entity('sys/traverse').load$({
-      id: runId,
-    })
+    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
     if (!run?.status) {
       return { ok: false, why: 'run-entity-not-found' }
@@ -422,14 +420,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       status: 'pending',
     })
 
-    // execute a task async
     seneca.post('sys:traverse,on:task,do:execute', {
       task: nextTask,
     })
-
-    //TODO: update proceesNextTask to load and process
-    // adding a enqueue to invoke prior ?
-    // processNextTask(run.task_msg)
 
     return { ok: true, run }
   }
@@ -451,15 +444,12 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       : entityId.slice(canonSeparatorIdx + 1)
   }
 
-  // It triggers before every client msg act return.
-  function processNextTask(taskMsg: Message): void {
+  function setUpTaskManager(runId: UUID, taskMsg: Message): void {
     seneca.message(taskMsg, async function (this: any, msg: any) {
       const seneca = this
       const clientActMsg: TaskDispatch = await seneca.prior(msg)
 
-      const run: RunEntity = await seneca
-        .entity('sys/traverse')
-        .load$(msg.task.run_id)
+      const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
       if (run?.status !== 'active') {
         return clientActMsg
@@ -476,7 +466,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
         run.status = 'completed'
         await run.save$()
 
-        return { ok: true }
+        return clientActMsg
       }
 
       // Dispatch the next pending task

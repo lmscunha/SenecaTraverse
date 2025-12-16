@@ -186,7 +186,7 @@ function Traverse(options) {
         });
         run.total_tasks = taskSuccessCount;
         await run.save$();
-        processNextTask(run.task_msg);
+        setUpTaskManager(run.id, run.task_msg);
         return {
             ok: true,
             run,
@@ -213,9 +213,7 @@ function Traverse(options) {
     // its pending children tasks.
     async function msgRunStart(msg) {
         const runId = msg.runId;
-        const run = await seneca.entity('sys/traverse').load$({
-            id: runId,
-        });
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
             return { ok: false, why: 'run-entity-not-found' };
         }
@@ -229,13 +227,9 @@ function Traverse(options) {
             run_id: run.id,
             status: 'pending',
         });
-        // execute a task async
         seneca.post('sys:traverse,on:task,do:execute', {
             task: nextTask,
         });
-        //TODO: update proceesNextTask to load and process
-        // adding a enqueue to invoke prior ?
-        // processNextTask(run.task_msg)
         return { ok: true, run };
     }
     function compareRelations(relations) {
@@ -248,14 +242,11 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
-    // It triggers before every client msg act return.
-    function processNextTask(taskMsg) {
+    function setUpTaskManager(runId, taskMsg) {
         seneca.message(taskMsg, async function (msg) {
             const seneca = this;
             const clientActMsg = await seneca.prior(msg);
-            const run = await seneca
-                .entity('sys/traverse')
-                .load$(msg.task.run_id);
+            const run = await seneca.entity('sys/traverse').load$(runId);
             if (run?.status !== 'active') {
                 return clientActMsg;
             }
@@ -268,7 +259,7 @@ function Traverse(options) {
             if (!nextTask?.id) {
                 run.status = 'completed';
                 await run.save$();
-                return { ok: true };
+                return clientActMsg;
             }
             // Dispatch the next pending task
             seneca.post('sys:traverse,on:task,do:execute', {
