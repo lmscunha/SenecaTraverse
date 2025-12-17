@@ -38,7 +38,7 @@ type RunEntity = {
 type TaskEntity = {
   id: UUID
   run_id: UUID
-  status: 'pending' | 'dispatched' | 'done' | 'failed'
+  status: 'pending' | 'dispatched' | 'done'
   task_msg: Message
   dispatched_at?: Timestamp
   done_at?: Timestamp
@@ -68,6 +68,10 @@ export type TraverseOptions = Partial<TraverseOptionsFull>
 
 function Traverse(this: any, options: TraverseOptionsFull) {
   const seneca: any = this
+  // A Run process can have multiple tasks as children.
+  // Thus, this plugin automatically maps these relations for the client.
+  options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
+  options.relations.parental.push(['sys/traverse', 'sys/traversetask'])
 
   seneca
     .fix('sys:traverse')
@@ -355,8 +359,6 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     run.total_tasks = taskSuccessCount
     await run.save$()
 
-    defineProcessHandler(run.id, run.task_msg)
-
     return {
       ok: true,
       run,
@@ -376,7 +378,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   }> {
     const task = msg.task
 
-    if (task.status !== 'pending' && task.status !== 'failed') {
+    if (task.status == 'done' || task.status == 'dispatched') {
       return { ok: true }
     }
 
@@ -420,23 +422,16 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     run.started_at = Date.now()
     await run.save$()
 
-    const nextTask: TaskEntity = await seneca.entity('sys/traversetask').load$({
-      run_id: run.id,
-      status: ['pending', 'failed'],
-    })
+    const findChildrenRes: FindChildren = await seneca.post(
+      'sys:traverse,find:children',
+      {
+        rootEntity: 'sys/traverse',
+        rootEntityId: run.id,
+      },
+    )
 
-    if (!nextTask?.id) {
-      run.status = 'completed'
-      run.completed_at = Date.now()
-      await run.save$()
-
-      return { ok: true, run }
-    }
-
-    seneca.post('sys:traverse,on:task,do:execute', {
-      task: nextTask,
-    })
-
+    const runTasksSpec = findChildrenRes.children
+    processRunTasks(run, runTasksSpec)
     return { ok: true, run }
   }
 
@@ -487,39 +482,53 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       : entityId.slice(canonSeparatorIdx + 1)
   }
 
-  function defineProcessHandler(runId: UUID, taskMsg: Message): void {
-    seneca.message(taskMsg, async function (this: any, msg: any) {
-      const seneca = this
-      const clientActMsg: TaskDispatch = await seneca.prior(msg)
+  async function processRunTasks(
+    runEnt: RunEntity,
+    tasks: ChildInstance[],
+  ): Promise<void> {
+    let run = runEnt
 
-      const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    if (tasks.length === 0) {
+      run.status = 'completed'
+      run.completed_at = Date.now()
+      await run.save$()
+      return
+    }
 
-      if (run?.status !== 'active') {
-        return clientActMsg
+    for (const taskToProcess of tasks) {
+      run = await seneca
+        .entity(taskToProcess.parent_canon)
+        .load$(taskToProcess.parent_id)
+
+      if (!run || run.status === 'stopped') {
+        break
       }
 
-      const nextTask: TaskEntity = await seneca
+      const task: TaskEntity = await seneca
         .entity('sys/traversetask')
-        .load$({
-          run_id: run.id,
-          status: 'pending',
-        })
+        .load$(taskToProcess.child_id)
 
-      if (!nextTask?.id) {
-        run.status = 'completed'
-        run.completed_at = Date.now()
-        await run.save$()
-
-        return clientActMsg
+      if (!task) {
+        continue
       }
 
-      // Dispatch the next pending task
-      seneca.post('sys:traverse,on:task,do:execute', {
-        task: nextTask,
-      })
+      const canProcessNextTask =
+        task.status !== 'dispatched' && task.status !== 'done'
 
-      return clientActMsg
-    })
+      if (!canProcessNextTask) {
+        continue
+      }
+
+      await seneca.post('sys:traverse,on:task,do:execute', {
+        task,
+      })
+    }
+
+    if (run?.status !== 'stopped') {
+      run.completed_at = Date.now()
+      run.status = 'completed'
+      await run.save$()
+    }
   }
 }
 

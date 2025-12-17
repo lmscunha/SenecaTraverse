@@ -2874,8 +2874,6 @@ describe('Traverse', () => {
       .message('aim:task,deep:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
 
-        await sleep(Math.random() * 15)
-
         taskEnt.status = 'done'
         taskEnt.done_at = Date.now()
 

@@ -4,6 +4,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
+    // A Run process can have multiple tasks as children.
+    // Thus, this plugin automatically maps these relations for the client.
+    options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
+    options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
     seneca
         .fix('sys:traverse')
         .message('find:deps', {
@@ -188,7 +192,6 @@ function Traverse(options) {
         }
         run.total_tasks = taskSuccessCount;
         await run.save$();
-        defineProcessHandler(run.id, run.task_msg);
         return {
             ok: true,
             run,
@@ -199,7 +202,7 @@ function Traverse(options) {
     // Execute a single Run task.
     async function msgTaskExecute(msg) {
         const task = msg.task;
-        if (task.status !== 'pending' && task.status !== 'failed') {
+        if (task.status == 'done' || task.status == 'dispatched') {
             return { ok: true };
         }
         task.status = 'dispatched';
@@ -225,19 +228,12 @@ function Traverse(options) {
         run.status = 'active';
         run.started_at = Date.now();
         await run.save$();
-        const nextTask = await seneca.entity('sys/traversetask').load$({
-            run_id: run.id,
-            status: ['pending', 'failed'],
+        const findChildrenRes = await seneca.post('sys:traverse,find:children', {
+            rootEntity: 'sys/traverse',
+            rootEntityId: run.id,
         });
-        if (!nextTask?.id) {
-            run.status = 'completed';
-            run.completed_at = Date.now();
-            await run.save$();
-            return { ok: true, run };
-        }
-        seneca.post('sys:traverse,on:task,do:execute', {
-            task: nextTask,
-        });
+        const runTasksSpec = findChildrenRes.children;
+        processRunTasks(run, runTasksSpec);
         return { ok: true, run };
     }
     // Stop a Run process execution,
@@ -265,32 +261,40 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
-    function defineProcessHandler(runId, taskMsg) {
-        seneca.message(taskMsg, async function (msg) {
-            const seneca = this;
-            const clientActMsg = await seneca.prior(msg);
-            const run = await seneca.entity('sys/traverse').load$(runId);
-            if (run?.status !== 'active') {
-                return clientActMsg;
+    async function processRunTasks(runEnt, tasks) {
+        let run = runEnt;
+        if (tasks.length === 0) {
+            run.status = 'completed';
+            run.completed_at = Date.now();
+            await run.save$();
+            return;
+        }
+        for (const taskToProcess of tasks) {
+            run = await seneca
+                .entity(taskToProcess.parent_canon)
+                .load$(taskToProcess.parent_id);
+            if (!run || run.status === 'stopped') {
+                break;
             }
-            const nextTask = await seneca
+            const task = await seneca
                 .entity('sys/traversetask')
-                .load$({
-                run_id: run.id,
-                status: 'pending',
-            });
-            if (!nextTask?.id) {
-                run.status = 'completed';
-                run.completed_at = Date.now();
-                await run.save$();
-                return clientActMsg;
+                .load$(taskToProcess.child_id);
+            if (!task) {
+                continue;
             }
-            // Dispatch the next pending task
-            seneca.post('sys:traverse,on:task,do:execute', {
-                task: nextTask,
+            const canProcessNextTask = task.status !== 'dispatched' && task.status !== 'done';
+            if (!canProcessNextTask) {
+                continue;
+            }
+            await seneca.post('sys:traverse,on:task,do:execute', {
+                task,
             });
-            return clientActMsg;
-        });
+        }
+        if (run?.status !== 'stopped') {
+            run.completed_at = Date.now();
+            run.status = 'completed';
+            await run.save$();
+        }
     }
 }
 // Default options.
