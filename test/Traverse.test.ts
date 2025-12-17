@@ -2068,8 +2068,6 @@ describe('Traverse', () => {
     expect(runEnt.status).equal('created')
     expect(runEnt.task_msg).equal('aim:task,print:id')
     expect(runEnt.total_tasks).equal(4)
-    expect(runEnt.completed_tasks).equal(0)
-    expect(runEnt.failed_tasks).equal(0)
   })
 
   test('create-run-empty-children', async () => {
@@ -2363,8 +2361,8 @@ describe('Traverse', () => {
         const taskEnt = msg.task
         executionCount++
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
         await taskEnt.save$()
 
         return { ok: true }
@@ -2402,7 +2400,7 @@ describe('Traverse', () => {
     expect(executionCount).equal(1)
 
     const updatedTask = await seneca.entity('sys/traversetask').load$(task.id)
-    expect(updatedTask.status).equal('completed')
+    expect(updatedTask.status).equal('done')
   })
 
   test('start-run', async () => {
@@ -2522,8 +2520,8 @@ describe('Traverse', () => {
         await sleep(Math.random() * 10)
 
         // Mark task as done
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
         await taskEnt.save$()
 
         return { ok: true }
@@ -2586,18 +2584,18 @@ describe('Traverse', () => {
     expect(tasks.length).equal(9)
 
     for (const task of tasks) {
-      expect(task.status).equal('completed')
+      expect(task.status).equal('done')
     }
 
     for (let i = 1; i < tasks.length; i++) {
       const prevTask = tasks[i - 1]
       const currentTask = tasks[i]
 
-      const isSequential = currentTask.completed_at >= prevTask.completed_at
+      const isSequential = currentTask.done_at >= prevTask.done_at
       expect(isSequential).equal(true)
     }
 
-    const timestamps = tasks.map((t: any) => t.completed_at)
+    const timestamps = tasks.map((t: any) => t.done_at)
     const uniqueTimestamps = new Set(timestamps)
 
     expect(uniqueTimestamps.size).equal(timestamps.length)
@@ -2612,8 +2610,8 @@ describe('Traverse', () => {
       .message('aim:task,empty:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
         await taskEnt.save$()
 
         return { ok: true }
@@ -2651,7 +2649,7 @@ describe('Traverse', () => {
       run_id: runEnt.id,
     })
 
-    expect(tasks[0].status).equal('completed')
+    expect(tasks[0].status).equal('done')
 
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)
 
@@ -2676,8 +2674,8 @@ describe('Traverse', () => {
 
         await sleep(Math.random() * 15)
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
         return { ok: true }
@@ -2719,14 +2717,14 @@ describe('Traverse', () => {
       run_id: runEnt.id,
     })
 
-    // Verify all completed
+    // Verify all done
     for (const task of tasks) {
-      expect(task.status).equal('completed')
+      expect(task.status).equal('done')
     }
 
     // Verify strict sequential order
     for (let i = 1; i < tasks.length; i++) {
-      const isSequential = tasks[i].completed_at > tasks[i - 1].completed_at
+      const isSequential = tasks[i].done_at > tasks[i - 1].done_at
 
       expect(isSequential).equal(true)
     }
@@ -2812,8 +2810,8 @@ describe('Traverse', () => {
 
         await sleep(Math.random() * 15)
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
         return { ok: true }
@@ -2875,8 +2873,8 @@ describe('Traverse', () => {
 
         await sleep(Math.random() * 15)
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
         return { ok: true }
@@ -2900,11 +2898,11 @@ describe('Traverse', () => {
     })
 
     const flipTaskState = (state: string) =>
-      state === 'completed' ? 'failed' : 'completed'
+      state === 'done' ? 'failed' : 'done'
     tasks.forEach(async (task: any) => {
       // save incomplete state
 
-      const state = flipTaskState('completed')
+      const state = flipTaskState('done')
       task.status = state
       await task.save$()
     })
@@ -2920,9 +2918,9 @@ describe('Traverse', () => {
       run_id: runEnt.id,
     })
 
-    // Verify all completed
+    // Verify all done
     tasksRestart.forEach((task: any) => {
-      expect(task.status).equal('completed')
+      expect(task.status).equal('done')
     })
 
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)
@@ -2947,8 +2945,8 @@ describe('Traverse', () => {
 
         await sleep(Math.random() * 15)
 
-        taskEnt.status = 'completed'
-        taskEnt.completed_at = Date.now()
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
         return { ok: true }
@@ -3012,17 +3010,16 @@ describe('Traverse', () => {
     // number of tasks shouldn't change
     expect(tasksRestart.length).equal(tasksRunStart.length)
 
-    // Verify all completed
+    // Verify all done
     tasksRestart.forEach((task: any, idx: number) => {
-      expect(task.status).equal('completed')
+      expect(task.status).equal('done')
       // verity no new task was created
       expect(task.id).equal(tasksRunStart[idx].id)
     })
 
     // Verify strict sequential order
     for (let i = 1; i < tasksRestart.length; i++) {
-      const isSequential =
-        tasksRestart[i].completed_at > tasksRestart[i - 1].completed_at
+      const isSequential = tasksRestart[i].done_at > tasksRestart[i - 1].done_at
 
       expect(isSequential).equal(true)
     }

@@ -38,10 +38,10 @@ type RunEntity = {
 type TaskEntity = {
   id: UUID
   run_id: UUID
-  status: 'pending' | 'dispatched' | 'completed' | 'failed'
+  status: 'pending' | 'dispatched' | 'done' | 'failed'
   task_msg: Message
   dispatched_at?: Timestamp
-  completed_at?: Timestamp
+  done_at?: Timestamp
 } & ChildInstance &
   Entity
 
