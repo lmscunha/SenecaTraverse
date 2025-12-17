@@ -44,6 +44,7 @@ type TaskEntity = {
   status: 'pending' | 'dispatched' | 'completed' | 'failed'
   task_msg: Message
   dispatched_at?: Timestamp
+  completed_at?: Timestamp
 } & ChildInstance &
   Entity
 
@@ -264,6 +265,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     const taskMsg = msg.taskMsg
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
+    const isRootIncluded = options.rootExecute
 
     const run: RunEntity = await seneca.entity('sys/traverse').save$({
       root_entity: rootEntity,
@@ -285,7 +287,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
     const tasksCreationPromises: Promise<TaskEntity>[] = []
 
-    if (options.rootExecute) {
+    if (isRootIncluded) {
       // Process the action over the root data storage,
       // not only on its children.
       tasksCreationPromises.push(
@@ -320,13 +322,17 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
     let taskSuccessCount = 0
     let taskFailedCount = 0
+    let childIdx = isRootIncluded ? -1 : 0
 
     tasksCreationRes.forEach((taskCreation, idx) => {
       if (taskCreation.status === 'fulfilled') {
         taskSuccessCount++
       } else {
         taskFailedCount++
-        const childrenData = findChildrenRes.children[idx]
+        const childrenData =
+          childIdx === -1
+            ? { child_canon: rootEntity, child_id: rootEntityId }
+            : findChildrenRes.children[childIdx]
 
         // TODO: add proper logging and retry
         console.error(
@@ -338,6 +344,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
             taskCreation.reason,
         )
       }
+      childIdx++
     })
 
     run.total_tasks = taskSuccessCount
@@ -401,7 +408,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     }
 
     if (run.status === 'completed' || run.status === 'active') {
-      return { ok: true }
+      return { ok: true, run }
     }
 
     run.status = 'active'

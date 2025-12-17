@@ -123,6 +123,7 @@ function Traverse(options) {
         const taskMsg = msg.taskMsg;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
+        const isRootIncluded = options.rootExecute;
         const run = await seneca.entity('sys/traverse').save$({
             root_entity: rootEntity,
             root_id: rootEntityId,
@@ -137,7 +138,7 @@ function Traverse(options) {
             rootEntityId,
         });
         const tasksCreationPromises = [];
-        if (options.rootExecute) {
+        if (isRootIncluded) {
             // Process the action over the root data storage,
             // not only on its children.
             tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
@@ -164,13 +165,16 @@ function Traverse(options) {
         const tasksCreationRes = await Promise.allSettled(tasksCreationPromises);
         let taskSuccessCount = 0;
         let taskFailedCount = 0;
+        let childIdx = isRootIncluded ? -1 : 0;
         tasksCreationRes.forEach((taskCreation, idx) => {
             if (taskCreation.status === 'fulfilled') {
                 taskSuccessCount++;
             }
             else {
                 taskFailedCount++;
-                const childrenData = findChildrenRes.children[idx];
+                const childrenData = childIdx === -1
+                    ? { child_canon: rootEntity, child_id: rootEntityId }
+                    : findChildrenRes.children[childIdx];
                 // TODO: add proper logging and retry
                 console.error('task create failed for child_canon: ' +
                     childrenData.child_canon +
@@ -179,6 +183,7 @@ function Traverse(options) {
                     ' - error: ' +
                     taskCreation.reason);
             }
+            childIdx++;
         });
         run.total_tasks = taskSuccessCount;
         await run.save$();
@@ -214,7 +219,7 @@ function Traverse(options) {
             return { ok: false, why: 'run-entity-not-found' };
         }
         if (run.status === 'completed' || run.status === 'active') {
-            return { ok: true };
+            return { ok: true, run };
         }
         run.status = 'active';
         run.started_at = Date.now();
