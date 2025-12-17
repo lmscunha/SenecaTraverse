@@ -2349,6 +2349,52 @@ const __2 = __importDefault(require(".."));
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
+    (0, node_test_1.test)('stop-run', async () => {
+        const seneca = makeSeneca()
+            .use(__2.default, {
+            relations: {
+                parental: [
+                    ['foo/bar0', 'foo/bar1'],
+                    ['foo/bar0', 'foo/bar2'],
+                    ['foo/bar0', 'foo/zed0'],
+                ],
+            },
+        })
+            .message('aim:task,print:id', async function (msg) {
+            const taskEnt = msg.task;
+            // console.log('task id: ', taskEnt.id)
+            taskEnt.status = 'done';
+            await taskEnt.save$();
+            return { ok: true, a: 1 };
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/bar0';
+        // only level 1 entities actually exist
+        await seneca.entity('foo/bar1').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/bar2').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/zed0').save$({
+            bar0_id: rootEntityId,
+        });
+        const createTaskRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId: rootEntityId,
+            taskMsg: 'aim:task,print:id',
+        });
+        const runEnt = createTaskRes.run;
+        await seneca.post('sys:traverse,on:run,do:start', {
+            runId: runEnt.id,
+        });
+        const stopRunRes = await seneca.post('sys:traverse,on:run,do:stop', {
+            runId: runEnt.id,
+        });
+        (0, code_1.expect)(stopRunRes.ok).true();
+        (0, code_1.expect)(stopRunRes.run.status).equal('stopped');
+    });
 });
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
