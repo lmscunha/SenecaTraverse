@@ -9,6 +9,18 @@ const docs = {
         msgFindChildren: {
             desc: 'Returns all discovered child instances with their parent relationship.',
         },
+        msgCreateTaskRun: {
+            desc: 'Create a run process and generate tasks for each child entity to be executed.',
+        },
+        msgRunStart: {
+            desc: 'Start a Run process execution, dispatching the next pending child task.',
+        },
+        msgRunStop: {
+            desc: 'Stop a Run process execution, preventing the dispatching of the next pending child task.',
+        },
+        msgTaskExecute: {
+            desc: 'Execute a single Run task.',
+        },
     },
 };
 exports.default = docs;

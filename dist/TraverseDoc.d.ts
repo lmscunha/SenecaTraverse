@@ -6,6 +6,18 @@ declare const docs: {
         msgFindChildren: {
             desc: string;
         };
+        msgCreateTaskRun: {
+            desc: string;
+        };
+        msgRunStart: {
+            desc: string;
+        };
+        msgRunStop: {
+            desc: string;
+        };
+        msgTaskExecute: {
+            desc: string;
+        };
     };
 };
 export default docs;
