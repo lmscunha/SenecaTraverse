@@ -35,36 +35,31 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 
 <!--START:options-->
 
-
 ## Options
 
-* `debug` : boolean
-* `rootExecute` : boolean
-* `rootEntity` : string
-* `relations` : object
-* `customRef` : object
-* `init$` : boolean
-
+- `debug` : boolean
+- `rootExecute` : boolean
+- `rootEntity` : string
+- `relations` : object
+- `customRef` : object
+- `init$` : boolean
 
 <!--END:options-->
 
 <!--START:action-list-->
 
-
 ## Action Patterns
 
-* [sys:traverse,do:create,on:run](#-systraversedocreateonrun-)
-* [sys:traverse,do:execute,on:task](#-systraversedoexecuteontask-)
-* [sys:traverse,do:start,on:run](#-systraversedostartonrun-)
-* [sys:traverse,do:stop,on:run](#-systraversedostoponrun-)
-* [sys:traverse,find:children](#-systraversefindchildren-)
-* [sys:traverse,find:deps](#-systraversefinddeps-)
-
+- [sys:traverse,do:create,on:run](#-systraversedocreateonrun-)
+- [sys:traverse,do:execute,on:task](#-systraversedoexecuteontask-)
+- [sys:traverse,do:start,on:run](#-systraversedostartonrun-)
+- [sys:traverse,do:stop,on:run](#-systraversedostoponrun-)
+- [sys:traverse,find:children](#-systraversefindchildren-)
+- [sys:traverse,find:deps](#-systraversefinddeps-)
 
 <!--END:action-list-->
 
 <!--START:action-desc-->
-
 
 ## Action Descriptions
 
@@ -72,78 +67,64 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 
 Create a run process and generate tasks for each child entity to be executed.
 
-
 #### Parameters
 
+- **rootEntity** : _string_ (optional, default: ``)
+- **rootEntityId** : _string_
+- **taskMsg** : _string_
 
-* __rootEntity__ : _string_ (optional, default: ``)
-* __rootEntityId__ : _string_
-* __taskMsg__ : _string_
+---
 
-
-----------
 ### &laquo; `sys:traverse,do:execute,on:task` &raquo;
 
 Execute a single Run task.
 
-
 #### Parameters
 
+- **task** : _object_
 
-* __task__ : _object_
+---
 
-
-----------
 ### &laquo; `sys:traverse,do:start,on:run` &raquo;
 
 Start a Run process execution, dispatching the next pending child task.
 
-
 #### Parameters
 
+- **runId** : _string_
 
-* __runId__ : _string_
+---
 
-
-----------
 ### &laquo; `sys:traverse,do:stop,on:run` &raquo;
 
 Stop a Run process execution, preventing the dispatching of the next pending child task.
 
-
 #### Parameters
 
+- **runId** : _string_
 
-* __runId__ : _string_
+---
 
-
-----------
 ### &laquo; `sys:traverse,find:children` &raquo;
 
 Returns all discovered child instances with their parent relationship.
 
-
 #### Parameters
 
+- **rootEntity** : _string_ (optional, default: ``)
+- **rootEntityId** : _string_
 
-* __rootEntity__ : _string_ (optional, default: ``)
-* __rootEntityId__ : _string_
+---
 
-
-----------
 ### &laquo; `sys:traverse,find:deps` &raquo;
 
 Returns a sorted list of entity pairs starting from a given entity.
 
-
 #### Parameters
 
+- **rootEntity** : _string_ (optional, default: ``)
 
-* __rootEntity__ : _string_ (optional, default: ``)
-
-
-----------
-
+---
 
 <!--END:action-desc-->
 
