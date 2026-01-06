@@ -7,6 +7,7 @@ type TraverseOptionsFull = {
     relations: {
         parental: Parental;
     };
+    customRef: Record<EntityID, string>;
 };
 export type TraverseOptions = Partial<TraverseOptionsFull>;
 declare function Traverse(this: any, options: TraverseOptionsFull): void;

@@ -5,11 +5,19 @@ const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
     // const { Default } = seneca.valid
-    seneca.fix('sys:traverse').message('find:deps', {
+    seneca
+        .fix('sys:traverse')
+        .message('find:deps', {
         rootEntity: (0, gubu_1.Optional)(String),
-    }, msgFindDeps);
-    // Returns a sorted list of entity pairs starting from a given entity.
-    // In breadth-first order, sorting first by level, then alphabetically in each level.
+    }, msgFindDeps)
+        .message('find:children', {
+        rootEntity: (0, gubu_1.Optional)(String),
+        rootEntityId: String,
+    }, msgFindChildren);
+    // Returns a sorted list of entity pairs
+    // starting from a given entity.
+    // In breadth-first order, sorting first by level,
+    // then alphabetically in each level.
     async function msgFindDeps(msg) {
         // const seneca = this
         const allRelations = options.relations.parental;
@@ -50,9 +58,64 @@ function Traverse(options) {
             deps,
         };
     }
+    // Returns all discovered child
+    // instances with their parent relationship.
+    async function msgFindChildren(msg) {
+        const rootEntity = msg.rootEntity || options.rootEntity;
+        const rootEntityId = msg.rootEntityId;
+        const customRef = options.customRef;
+        const relationsQueueRes = await seneca.post('sys:traverse,find:deps', {
+            rootEntity,
+        });
+        const relationsQueue = relationsQueueRes.deps;
+        const result = [];
+        const parentInstanceMap = new Map();
+        parentInstanceMap.set(rootEntity, new Set([rootEntityId]));
+        for (const [parentCanon, childCanon] of relationsQueue) {
+            const parentInstances = parentInstanceMap.get(parentCanon);
+            if (!parentInstances || parentInstances.size === 0) {
+                continue;
+            }
+            const foreignRef = customRef[childCanon] || `${getEntityName(parentCanon)}_id`;
+            if (!parentInstanceMap.has(childCanon)) {
+                parentInstanceMap.set(childCanon, new Set());
+            }
+            const childInstancesSet = parentInstanceMap.get(childCanon);
+            const childQueryPromises = Array.from(parentInstances).map(async (parentId) => {
+                const childInstances = await seneca.entity(childCanon).list$({
+                    [foreignRef]: parentId,
+                    fields$: ['id'],
+                });
+                return { parentId, childInstances };
+            });
+            const queryResults = await Promise.all(childQueryPromises);
+            for (const { parentId, childInstances } of queryResults) {
+                for (const childInst of childInstances) {
+                    const childId = childInst.id;
+                    childInstancesSet.add(childId);
+                    result.push({
+                        parent_id: parentId,
+                        child_id: childId,
+                        parent_canon: parentCanon,
+                        child_canon: childCanon,
+                    });
+                }
+            }
+        }
+        return {
+            ok: true,
+            children: result,
+        };
+    }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
             a[1].localeCompare(b[1], undefined, { numeric: true }));
+    }
+    function getEntityName(entityId) {
+        const canonSeparatorIdx = entityId.lastIndexOf('/');
+        return canonSeparatorIdx === -1
+            ? entityId
+            : entityId.slice(canonSeparatorIdx + 1);
     }
 }
 // Default options.
@@ -63,6 +126,7 @@ const defaults = {
     relations: {
         parental: [],
     },
+    customRef: {},
 };
 Object.assign(Traverse, { defaults });
 exports.default = Traverse;

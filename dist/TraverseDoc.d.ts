@@ -3,6 +3,9 @@ declare const docs: {
         msgFindDeps: {
             desc: string;
         };
+        msgFindChildren: {
+            desc: string;
+        };
     };
 };
 export default docs;

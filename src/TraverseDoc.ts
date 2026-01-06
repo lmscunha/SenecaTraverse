@@ -5,6 +5,9 @@ const docs = {
     msgFindDeps: {
       desc: 'Returns a sorted list of entity pairs starting from a given entity.',
     },
+    msgFindChildren: {
+      desc: 'Returns all discovered child instances with their parent relationship.',
+    },
   },
 }
 
