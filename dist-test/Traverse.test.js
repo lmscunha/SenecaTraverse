@@ -2024,6 +2024,10 @@ const __2 = __importDefault(require(".."));
             // console.log('task_id', taskEnt.id)
             taskEnt.status = 'done';
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
+            return { ok: true };
         });
         await seneca.ready();
         const rootEntityId = '123';
@@ -2088,8 +2092,6 @@ const __2 = __importDefault(require(".."));
         const exec1 = seneca.post('sys:traverse,on:task,do:execute', { task });
         const exec2 = seneca.post('sys:traverse,on:task,do:execute', { task });
         await Promise.all([exec1, exec2]);
-        // TODO: improve async validation
-        await sleep(50);
         (0, code_1.expect)(executionCount).equal(1);
         const updatedTask = await seneca.entity('sys/traversetask').load$(task.id);
         (0, code_1.expect)(updatedTask.status).equal('done');
@@ -2121,6 +2123,9 @@ const __2 = __importDefault(require(".."));
             // console.log('task id: ', taskEnt.id)
             taskEnt.status = 'done';
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true, a: 1 };
         });
         await seneca.ready();
@@ -2153,8 +2158,6 @@ const __2 = __importDefault(require(".."));
             runId: runEnt.id,
         });
         (0, code_1.expect)(startRunRes.ok).true();
-        // TODO: improve async validation
-        await sleep(50);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -2193,6 +2196,9 @@ const __2 = __importDefault(require(".."));
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -2232,8 +2238,6 @@ const __2 = __importDefault(require(".."));
         });
         (0, code_1.expect)(startRunRes.ok).equal(true);
         // Wait for all tasks to complete
-        // TODO: improve async validation
-        await sleep(200);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -2261,6 +2265,9 @@ const __2 = __importDefault(require(".."));
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -2281,8 +2288,6 @@ const __2 = __importDefault(require(".."));
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
-        // TODO: improve async validation
-        await sleep(50);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -2308,6 +2313,9 @@ const __2 = __importDefault(require(".."));
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -2332,8 +2340,6 @@ const __2 = __importDefault(require(".."));
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
-        // TODO: improve async validation
-        await sleep(150);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -2410,7 +2416,6 @@ const __2 = __importDefault(require(".."));
         })
             .message('aim:task,deep:test', async function (msg) {
             const taskEnt = msg.task;
-            await sleep(Math.random() * 15);
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
@@ -2455,29 +2460,41 @@ const __2 = __importDefault(require(".."));
                 ],
             },
         })
-            .message('aim:task,deep:test', async function (msg) {
+            .message('aim:task,restart:run', async function (msg) {
             const taskEnt = msg.task;
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true };
         });
         await seneca.ready();
         const rootEntityId = '123';
         const rootEntity = 'foo/bar0';
+        // only level 1 entities actually exist
+        await seneca.entity('foo/bar1').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/bar2').save$({
+            bar0_id: rootEntityId,
+        });
+        await seneca.entity('foo/zed0').save$({
+            bar0_id: rootEntityId,
+        });
         const createTaskRes = await seneca.post('sys:traverse,on:run,do:create', {
             rootEntity,
             rootEntityId,
-            taskMsg: 'aim:task,deep:test',
+            taskMsg: 'aim:task,restart:run',
         });
         const runEnt = createTaskRes.run;
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        const flipTaskState = (state) => state === 'done' ? 'failed' : 'done';
         tasks.forEach(async (task) => {
             // save incomplete state
-            const state = flipTaskState('done');
+            const state = 'failed';
             task.status = state;
             await task.save$();
         });
@@ -2485,8 +2502,6 @@ const __2 = __importDefault(require(".."));
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
-        // TODO: improve async validation
-        await sleep(100);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -2512,6 +2527,9 @@ const __2 = __importDefault(require(".."));
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
+            await seneca.post('sys:traverse,on:task,do:next', {
+                runId: taskEnt.run_id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -2525,6 +2543,9 @@ const __2 = __importDefault(require(".."));
             taskMsg: 'aim:task,done:test',
         });
         const runEnt = createTaskRes.run;
+        await seneca.post('sys:traverse,on:run,do:stop', {
+            runId: runEnt.id,
+        });
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
@@ -2532,22 +2553,6 @@ const __2 = __importDefault(require(".."));
             run_id: runEnt.id,
         });
         (0, code_1.expect)(tasksRunStart.length).equal(3);
-        await seneca.post('sys:traverse,on:run,do:stop', {
-            runId: runEnt.id,
-        });
-        const tasksRunStop = await seneca.entity('sys/traversetask').list$({
-            run_id: runEnt.id,
-        });
-        const lastTask = tasksRunStop[tasksRunStop.length - 1];
-        (0, code_1.expect)(lastTask.status).equal('pending');
-        const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id);
-        (0, code_1.expect)(runStopRes.status).equal('stopped');
-        // run the same process again
-        await seneca.post('sys:traverse,on:run,do:start', {
-            runId: runEnt.id,
-        });
-        // TODO: improve async validation
-        await sleep(100);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });

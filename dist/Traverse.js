@@ -25,6 +25,9 @@ function Traverse(options) {
         .message('on:task,do:execute', {
         task: Object,
     }, msgTaskExecute)
+        .message('on:task,do:next', {
+        runId: String,
+    }, msgTaskNext)
         .message('on:run,do:start', {
         runId: String,
     }, msgRunStart)
@@ -214,6 +217,25 @@ function Traverse(options) {
         await seneca.post(task.task_msg, dispatchArg);
         return { ok: true };
     }
+    // Dispatch the next pending task for a run.
+    async function msgTaskNext(msg) {
+        const runId = msg.runId;
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run?.status) {
+            return { ok: false, why: 'run-entity-not-found' };
+        }
+        if (run.status === 'stopped' || run.status === 'completed') {
+            return { ok: false, why: 'inactive-run' };
+        }
+        const task = await dispatchNextTask(runId);
+        if (!task) {
+            run.status = 'completed';
+            run.completed_at = Date.now();
+            await run.save$();
+            return { ok: true, why: 'run-completed' };
+        }
+        return { ok: true, task };
+    }
     // Start a Run process execution,
     // dispatching the next pending child task.
     async function msgRunStart(msg) {
@@ -228,12 +250,7 @@ function Traverse(options) {
         run.status = 'active';
         run.started_at = Date.now();
         await run.save$();
-        const findChildrenRes = await seneca.post('sys:traverse,find:children', {
-            rootEntity: 'sys/traverse',
-            rootEntityId: run.id,
-        });
-        const runTasksSpec = findChildrenRes.children;
-        processRunTasks(run, runTasksSpec);
+        await dispatchNextTask(run.id);
         return { ok: true, run };
     }
     // Stop a Run process execution,
@@ -261,40 +278,22 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
-    async function processRunTasks(runEnt, tasks) {
-        let run = runEnt;
-        if (tasks.length === 0) {
-            run.status = 'completed';
-            run.completed_at = Date.now();
-            await run.save$();
-            return;
+    async function dispatchNextTask(runId) {
+        const tasks = await seneca.entity('sys/traversetask').list$({
+            run_id: runId,
+            status: ['pending', 'failed'],
+            limit$: 1,
+            sort$: { t_c: 1 },
+        });
+        const task = tasks[0];
+        if (!task?.id) {
+            return null;
         }
-        for (const taskToProcess of tasks) {
-            run = await seneca
-                .entity(taskToProcess.parent_canon)
-                .load$(taskToProcess.parent_id);
-            if (!run || run.status === 'stopped') {
-                break;
-            }
-            const task = await seneca
-                .entity('sys/traversetask')
-                .load$(taskToProcess.child_id);
-            if (!task) {
-                continue;
-            }
-            const canProcessNextTask = task.status !== 'dispatched' && task.status !== 'done';
-            if (!canProcessNextTask) {
-                continue;
-            }
-            await seneca.post('sys:traverse,on:task,do:execute', {
-                task,
-            });
-        }
-        if (run?.status !== 'stopped') {
-            run.completed_at = Date.now();
-            run.status = 'completed';
-            await run.save$();
-        }
+        task.status = 'dispatched';
+        task.dispatched_at = Date.now();
+        await task.save$();
+        await seneca.post(task.task_msg, { task });
+        return task;
     }
 }
 // Default options.

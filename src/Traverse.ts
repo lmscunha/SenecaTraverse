@@ -107,6 +107,13 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       msgTaskExecute,
     )
     .message(
+      'on:task,do:next',
+      {
+        runId: String,
+      },
+      msgTaskNext,
+    )
+    .message(
       'on:run,do:start',
       {
         runId: String,
@@ -394,6 +401,42 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
+  // Dispatch the next pending task for a run.
+  async function msgTaskNext(
+    this: any,
+    msg: {
+      runId: string
+    },
+  ): Promise<{
+    ok: boolean
+    why?: string
+    task?: TaskEntity
+  }> {
+    const runId = msg.runId
+
+    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+
+    if (!run?.status) {
+      return { ok: false, why: 'run-entity-not-found' }
+    }
+
+    if (run.status === 'stopped' || run.status === 'completed') {
+      return { ok: false, why: 'inactive-run' }
+    }
+
+    const task = await dispatchNextTask(runId)
+
+    if (!task) {
+      run.status = 'completed'
+      run.completed_at = Date.now()
+
+      await run.save$()
+      return { ok: true, why: 'run-completed' }
+    }
+
+    return { ok: true, task }
+  }
+
   // Start a Run process execution,
   // dispatching the next pending child task.
   async function msgRunStart(
@@ -422,16 +465,8 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     run.started_at = Date.now()
     await run.save$()
 
-    const findChildrenRes: FindChildren = await seneca.post(
-      'sys:traverse,find:children',
-      {
-        rootEntity: 'sys/traverse',
-        rootEntityId: run.id,
-      },
-    )
+    await dispatchNextTask(run.id)
 
-    const runTasksSpec = findChildrenRes.children
-    processRunTasks(run, runTasksSpec)
     return { ok: true, run }
   }
 
@@ -482,53 +517,26 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       : entityId.slice(canonSeparatorIdx + 1)
   }
 
-  async function processRunTasks(
-    runEnt: RunEntity,
-    tasks: ChildInstance[],
-  ): Promise<void> {
-    let run = runEnt
+  async function dispatchNextTask(runId: string): Promise<TaskEntity | null> {
+    const tasks: TaskEntity[] = await seneca.entity('sys/traversetask').list$({
+      run_id: runId,
+      status: ['pending', 'failed'],
+      limit$: 1,
+      sort$: { t_c: 1 },
+    })
 
-    if (tasks.length === 0) {
-      run.status = 'completed'
-      run.completed_at = Date.now()
-      await run.save$()
-      return
+    const task = tasks[0]
+    if (!task?.id) {
+      return null
     }
 
-    for (const taskToProcess of tasks) {
-      run = await seneca
-        .entity(taskToProcess.parent_canon)
-        .load$(taskToProcess.parent_id)
+    task.status = 'dispatched'
+    task.dispatched_at = Date.now()
+    await task.save$()
 
-      if (!run || run.status === 'stopped') {
-        break
-      }
+    await seneca.post(task.task_msg, { task })
 
-      const task: TaskEntity = await seneca
-        .entity('sys/traversetask')
-        .load$(taskToProcess.child_id)
-
-      if (!task) {
-        continue
-      }
-
-      const canProcessNextTask =
-        task.status !== 'dispatched' && task.status !== 'done'
-
-      if (!canProcessNextTask) {
-        continue
-      }
-
-      await seneca.post('sys:traverse,on:task,do:execute', {
-        task,
-      })
-    }
-
-    if (run?.status !== 'stopped') {
-      run.completed_at = Date.now()
-      run.status = 'completed'
-      await run.save$()
-    }
+    return task
   }
 }
 

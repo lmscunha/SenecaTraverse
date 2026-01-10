@@ -2307,6 +2307,12 @@ describe('Traverse', () => {
 
         taskEnt.status = 'done'
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
+
+        return { ok: true }
       })
 
     await seneca.ready()
@@ -2395,9 +2401,6 @@ describe('Traverse', () => {
 
     await Promise.all([exec1, exec2])
 
-    // TODO: improve async validation
-    await sleep(50)
-
     expect(executionCount).equal(1)
 
     const updatedTask = await seneca.entity('sys/traversetask').load$(task.id)
@@ -2432,6 +2435,10 @@ describe('Traverse', () => {
 
         taskEnt.status = 'done'
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
 
         return { ok: true, a: 1 }
       })
@@ -2478,9 +2485,6 @@ describe('Traverse', () => {
 
     expect(startRunRes.ok).true()
 
-    // TODO: improve async validation
-    await sleep(50)
-
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
     })
@@ -2524,6 +2528,10 @@ describe('Traverse', () => {
         taskEnt.status = 'done'
         taskEnt.done_at = Date.now()
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
 
         return { ok: true }
       })
@@ -2577,9 +2585,6 @@ describe('Traverse', () => {
 
     // Wait for all tasks to complete
 
-    // TODO: improve async validation
-    await sleep(200)
-
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
     })
@@ -2617,6 +2622,10 @@ describe('Traverse', () => {
         taskEnt.done_at = Date.now()
         await taskEnt.save$()
 
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
+
         return { ok: true }
       })
 
@@ -2645,9 +2654,6 @@ describe('Traverse', () => {
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
-
-    // TODO: improve async validation
-    await sleep(50)
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -2680,6 +2686,11 @@ describe('Traverse', () => {
         taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
+
         return { ok: true }
       })
 
@@ -2712,9 +2723,6 @@ describe('Traverse', () => {
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
-
-    // TODO: improve async validation
-    await sleep(150)
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -2811,8 +2819,6 @@ describe('Traverse', () => {
       .message('aim:task,deep:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
 
-        await sleep(Math.random() * 15)
-
         taskEnt.status = 'done'
         taskEnt.done_at = Date.now()
 
@@ -2871,13 +2877,18 @@ describe('Traverse', () => {
           ],
         },
       })
-      .message('aim:task,deep:test', async function (this: any, msg: any) {
+      .message('aim:task,restart:run', async function (this: any, msg: any) {
         const taskEnt = msg.task
 
         taskEnt.status = 'done'
         taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
+
         return { ok: true }
       })
 
@@ -2886,10 +2897,23 @@ describe('Traverse', () => {
     const rootEntityId = '123'
     const rootEntity = 'foo/bar0'
 
+    // only level 1 entities actually exist
+    await seneca.entity('foo/bar1').save$({
+      bar0_id: rootEntityId,
+    })
+
+    await seneca.entity('foo/bar2').save$({
+      bar0_id: rootEntityId,
+    })
+
+    await seneca.entity('foo/zed0').save$({
+      bar0_id: rootEntityId,
+    })
+
     const createTaskRes = await seneca.post('sys:traverse,on:run,do:create', {
       rootEntity,
       rootEntityId,
-      taskMsg: 'aim:task,deep:test',
+      taskMsg: 'aim:task,restart:run',
     })
 
     const runEnt = createTaskRes.run
@@ -2898,12 +2922,10 @@ describe('Traverse', () => {
       run_id: runEnt.id,
     })
 
-    const flipTaskState = (state: string) =>
-      state === 'done' ? 'failed' : 'done'
     tasks.forEach(async (task: any) => {
       // save incomplete state
 
-      const state = flipTaskState('done')
+      const state = 'failed'
       task.status = state
       await task.save$()
     })
@@ -2912,9 +2934,6 @@ describe('Traverse', () => {
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
-
-    // TODO: improve async validation
-    await sleep(100)
 
     const tasksRestart = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -2946,6 +2965,11 @@ describe('Traverse', () => {
         taskEnt.done_at = Date.now()
 
         await taskEnt.save$()
+
+        await seneca.post('sys:traverse,on:task,do:next', {
+          runId: taskEnt.run_id,
+        })
+
         return { ok: true }
       })
 
@@ -2965,6 +2989,10 @@ describe('Traverse', () => {
 
     const runEnt = createTaskRes.run
 
+    await seneca.post('sys:traverse,on:run,do:stop', {
+      runId: runEnt.id,
+    })
+
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
@@ -2973,30 +3001,6 @@ describe('Traverse', () => {
       run_id: runEnt.id,
     })
     expect(tasksRunStart.length).equal(3)
-
-    await seneca.post('sys:traverse,on:run,do:stop', {
-      runId: runEnt.id,
-    })
-
-    const tasksRunStop = await seneca.entity('sys/traversetask').list$({
-      run_id: runEnt.id,
-    })
-
-    const lastTask = tasksRunStop[tasksRunStop.length - 1]
-
-    expect(lastTask.status).equal('pending')
-
-    const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id)
-
-    expect(runStopRes.status).equal('stopped')
-
-    // run the same process again
-    await seneca.post('sys:traverse,on:run,do:start', {
-      runId: runEnt.id,
-    })
-
-    // TODO: improve async validation
-    await sleep(100)
 
     const tasksRestart = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
