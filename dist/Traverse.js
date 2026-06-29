@@ -189,13 +189,12 @@ function Traverse(options) {
             const childrenData = childIdx === -1
                 ? { child_canon: rootEntity, child_id: rootEntityId }
                 : findChildrenRes.children[childIdx];
-            // TODO: add proper logging and retry
-            console.error('task create failed for child_canon: ' +
-                childrenData.child_canon +
-                ' - child_id: ' +
-                childrenData.child_id +
-                ' - error: ' +
-                taskCreation.reason);
+            // TODO: add retry
+            seneca.log.error('task-create-failed', {
+                child_canon: childrenData?.child_canon,
+                child_id: childrenData?.child_id,
+                err: taskCreation.reason,
+            });
             childIdx++;
         }
         run.total_tasks = taskSuccessCount;
