@@ -41,11 +41,11 @@
     "@hapi/code": "^9.0.3",
     "@seneca/doc": "^8.0.0",
     "@seneca/maintain": "^0.1.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.9.3",
     "gubu": "^9.0.0",
-    "prettier": "3.7.3",
+    "prettier": "3.8.4",
     "seneca-msg-test": "^4.1.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@seneca/entity-util": ">=3",
