@@ -9,6 +9,7 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2022",
-    "composite": true
+    "composite": true,
+    "types": ["node"]
   }
 }
