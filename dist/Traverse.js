@@ -12,7 +12,10 @@ function Traverse(options) {
     // injected relation across plugin loads (accumulating duplicates).
     options.relations = {
         ...options.relations,
-        parental: [...options.relations.parental, ['sys/traverse', 'sys/traversetask']],
+        parental: [
+            ...options.relations.parental,
+            ['sys/traverse', 'sys/traversetask'],
+        ],
     };
     seneca
         .fix('sys:traverse')
@@ -42,7 +45,6 @@ function Traverse(options) {
     // In breadth-first order, sorting first by level,
     // then alphabetically in each level.
     async function msgFindDeps(msg) {
-        // const seneca = this
         const allRelations = options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const deps = [];
