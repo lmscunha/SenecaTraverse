@@ -7,10 +7,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: create run', () => {
     (0, node_test_1.test)('create-run', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -65,7 +65,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(runEnt.total_tasks).equal(4);
     });
     (0, node_test_1.test)('create-run-empty-children', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [],
@@ -90,7 +90,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(createRunRes.run.status).to.equal('created');
     });
     (0, node_test_1.test)('create-run-empty-children-no-root-execute', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [],
@@ -116,7 +116,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(createRunRes.run.status).to.equal('created');
     });
     (0, node_test_1.test)('create-run-single-child', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [['foo/bar0', 'foo/bar1']],
@@ -150,7 +150,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(tasks[1].task_msg).to.equal('aim:task,print:id');
     });
     (0, node_test_1.test)('create-run-nested-hierarchy', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
