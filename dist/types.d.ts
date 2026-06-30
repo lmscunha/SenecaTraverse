@@ -54,6 +54,7 @@ export type TraverseOptionsFull = {
     debug: boolean;
     rootExecute: boolean;
     rootEntity: EntityID;
+    mode: 'sync' | 'async';
     relations: {
         parental: Parental;
     };
@@ -77,6 +78,10 @@ export interface CreateTaskRunInput {
 }
 /** Input for on:task,do:execute message */
 export interface TaskExecuteInput {
+    task: TaskEntity;
+}
+/** Input for do:dispatch,on:task message */
+export interface DispatchInput {
     task: TaskEntity;
 }
 /** Input for on:run,do:start message */
@@ -118,6 +123,10 @@ export interface CreateTaskRunResult extends BaseResult {
 export interface TaskExecuteResult extends BaseResult {
     ok: true;
 }
+/** Result for do:dispatch,on:task message */
+export interface DispatchResult extends BaseResult {
+    ok: true;
+}
 /** Result for on:run,do:start message */
 export interface RunStartResult extends BaseResult {
     ok: true;
@@ -136,6 +145,7 @@ export type MsgFindDepsFn = (msg: FindDepsInput) => Promise<FindDepsResult>;
 export type MsgFindChildrenFn = (msg: FindChildrenInput) => Promise<FindChildrenResult>;
 export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult>;
 export type MsgTaskExecuteFn = (msg: TaskExecuteInput) => Promise<TaskExecuteResult>;
+export type MsgDispatchFn = (msg: DispatchInput) => Promise<DispatchResult>;
 export type MsgRunStartFn = (msg: RunStartInput) => Promise<RunStartResult | InvalidResult>;
 export type MsgRunStopFn = (msg: RunStopInput) => Promise<RunStopResult | InvalidResult>;
 /** Traverse plugin function */
