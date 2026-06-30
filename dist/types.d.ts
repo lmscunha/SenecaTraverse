@@ -57,6 +57,7 @@ export type TraverseOptionsFull = {
     rootExecute: boolean;
     rootEntity: EntityID;
     mode: 'sync' | 'async';
+    scope: 'principal' | 'root';
     relations: {
         parental: Parental;
     };
@@ -129,6 +130,13 @@ export interface CreateTaskRunResult extends BaseResult {
     ok: true;
     run: RunEntity;
     tasksCreated: number;
+    tasksFailed: number;
+}
+/** Result when on:run,do:create rolls back due to task-create failures */
+export interface CreateTaskRunRollbackResult extends BaseResult {
+    ok: false;
+    why: 'task-create-failed';
+    tasksCreated: 0;
     tasksFailed: number;
 }
 /** Result for on:task,do:execute message */
