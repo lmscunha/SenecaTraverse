@@ -1,4 +1,4 @@
-/* Copyright © 2025 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
 import { Optional } from 'gubu'
 
@@ -313,15 +313,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
           ? { child_canon: rootEntity, child_id: rootEntityId }
           : findChildrenRes.children[childIdx]
 
-      // TODO: add proper logging and retry
-      console.error(
-        'task create failed for child_canon: ' +
-          childrenData.child_canon +
-          ' - child_id: ' +
-          childrenData.child_id +
-          ' - error: ' +
-          taskCreation.reason,
-      )
+      // TODO: add retry
+      seneca.log.error('task-create-failed', {
+        child_canon: childrenData?.child_canon,
+        child_id: childrenData?.child_id,
+        err: taskCreation.reason,
+      })
 
       childIdx++
     }

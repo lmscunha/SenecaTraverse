@@ -1,5 +1,5 @@
 "use strict";
-/* Copyright © 2024 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 Object.defineProperty(exports, "__esModule", { value: true });
 const docs = {
     messages: {
