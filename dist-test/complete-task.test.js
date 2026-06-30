@@ -1,0 +1,298 @@
+"use strict";
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const node_test_1 = require("node:test");
+const code_1 = require("@hapi/code");
+const __1 = __importDefault(require(".."));
+const utils_1 = require("./utils");
+(0, node_test_1.describe)('Traverse: complete task barrier', () => {
+    (0, node_test_1.test)('complete-task-marks-done', async () => {
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            relations: { parental: [['foo/a0', 'foo/a1']] },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        const rootEntityId = 'r1';
+        await seneca.entity('foo/a1').save$({ a0_id: rootEntityId });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/a0',
+            rootEntityId,
+            taskMsg: 'aim:task,do:noop',
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: createRes.run.id });
+        const task = tasks[0];
+        (0, code_1.expect)(task.status).equal('pending');
+        const res = await seneca.post('sys:traverse,on:task,do:complete', { task });
+        (0, code_1.expect)(res.ok).equal(true);
+        const updated = await seneca.entity('sys/traversetask').load$(task.id);
+        (0, code_1.expect)(updated.status).equal('done');
+        (0, code_1.expect)(updated.done_at).to.exist();
+    });
+    (0, node_test_1.test)('complete-task-stores-result-and-fragment', async () => {
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            relations: { parental: [['foo/b0', 'foo/b1']] },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        await seneca.entity('foo/b1').save$({ b0_id: 'r2' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/b0',
+            rootEntityId: 'r2',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: createRes.run.id });
+        const task = tasks[0];
+        await seneca.post('sys:traverse,on:task,do:complete', {
+            task,
+            result: { score: 42 },
+            fragment: 'email@example.com',
+        });
+        const updated = await seneca.entity('sys/traversetask').load$(task.id);
+        (0, code_1.expect)(updated.status).equal('done');
+        (0, code_1.expect)(updated.result).equal({ score: 42 });
+        (0, code_1.expect)(updated.fragment).equal('email@example.com');
+    });
+    (0, node_test_1.test)('complete-task-last-task-completes-run', async () => {
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            rootExecute: false,
+            relations: { parental: [['foo/c0', 'foo/c1']] },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        await seneca.entity('foo/c1').save$({ c0_id: 'r3' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/c0',
+            rootEntityId: 'r3',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const run = createRes.run;
+        await seneca.entity('sys/traverse').load$(run.id).then((r) => {
+            r.status = 'active';
+            return r.save$();
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id });
+        (0, code_1.expect)(tasks.length).equal(1);
+        await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[0] });
+        const updatedRun = await seneca.entity('sys/traverse').load$(run.id);
+        (0, code_1.expect)(updatedRun.status).equal('completed');
+        (0, code_1.expect)(updatedRun.completed_at).to.exist();
+    });
+    (0, node_test_1.test)('complete-task-not-last-does-not-complete-run', async () => {
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            rootExecute: false,
+            relations: {
+                parental: [
+                    ['foo/d0', 'foo/d1'],
+                    ['foo/d0', 'foo/d2'],
+                ],
+            },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        await seneca.entity('foo/d1').save$({ d0_id: 'r4' });
+        await seneca.entity('foo/d2').save$({ d0_id: 'r4' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/d0',
+            rootEntityId: 'r4',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const run = createRes.run;
+        await seneca.entity('sys/traverse').load$(run.id).then((r) => {
+            r.status = 'active';
+            return r.save$();
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id });
+        (0, code_1.expect)(tasks.length).equal(2);
+        // Complete only the first task
+        await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[0] });
+        const updatedRun = await seneca.entity('sys/traverse').load$(run.id);
+        (0, code_1.expect)(updatedRun.status).equal('active');
+    });
+    (0, node_test_1.test)('complete-task-did-complete-hook-fires', async () => {
+        let didCompleteRun = null;
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            rootExecute: false,
+            relations: { parental: [['foo/e0', 'foo/e1']] },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        seneca.message('sys:traverse,on:run,did:complete', async function (msg) {
+            didCompleteRun = msg.run;
+            return { ok: true };
+        });
+        await seneca.entity('foo/e1').save$({ e0_id: 'r5' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/e0',
+            rootEntityId: 'r5',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const run = createRes.run;
+        await seneca.entity('sys/traverse').load$(run.id).then((r) => {
+            r.status = 'active';
+            return r.save$();
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id });
+        await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[0] });
+        (0, code_1.expect)(didCompleteRun).to.exist();
+        (0, code_1.expect)(didCompleteRun.id).equal(run.id);
+        (0, code_1.expect)(didCompleteRun.status).equal('completed');
+    });
+    (0, node_test_1.test)('complete-task-did-complete-not-fired-when-not-last', async () => {
+        let completionCount = 0;
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            rootExecute: false,
+            relations: {
+                parental: [
+                    ['foo/f0', 'foo/f1'],
+                    ['foo/f0', 'foo/f2'],
+                ],
+            },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        seneca.message('sys:traverse,on:run,did:complete', async function () {
+            completionCount++;
+            return { ok: true };
+        });
+        await seneca.entity('foo/f1').save$({ f0_id: 'r6' });
+        await seneca.entity('foo/f2').save$({ f0_id: 'r6' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/f0',
+            rootEntityId: 'r6',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const run = createRes.run;
+        await seneca.entity('sys/traverse').load$(run.id).then((r) => {
+            r.status = 'active';
+            return r.save$();
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id });
+        await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[0] });
+        (0, code_1.expect)(completionCount).equal(0);
+        await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[1] });
+        (0, code_1.expect)(completionCount).equal(1);
+    });
+    (0, node_test_1.test)('complete-task-idempotent-no-double-completion', async () => {
+        let completionCount = 0;
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            rootExecute: false,
+            relations: { parental: [['foo/g0', 'foo/g1']] },
+        })
+            .message('aim:task,do:noop', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        seneca.message('sys:traverse,on:run,did:complete', async function () {
+            completionCount++;
+            return { ok: true };
+        });
+        await seneca.entity('foo/g1').save$({ g0_id: 'r7' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/g0',
+            rootEntityId: 'r7',
+            taskMsg: 'aim:task,do:noop',
+        });
+        const run = createRes.run;
+        await seneca.entity('sys/traverse').load$(run.id).then((r) => {
+            r.status = 'active';
+            return r.save$();
+        });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id });
+        const task = tasks[0];
+        // Call do:complete twice on the same task
+        await seneca.post('sys:traverse,on:task,do:complete', { task });
+        await seneca.post('sys:traverse,on:task,do:complete', { task });
+        (0, code_1.expect)(completionCount).equal(1);
+    });
+    (0, node_test_1.test)('async-mode-completion-via-barrier', async () => {
+        let didCompleteRun = null;
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            mode: 'async',
+            rootExecute: false,
+            relations: {
+                parental: [
+                    ['foo/h0', 'foo/h1'],
+                    ['foo/h0', 'foo/h2'],
+                ],
+            },
+        })
+            .message('aim:task,do:collect', async function (msg) {
+            const taskEnt = msg.task;
+            // Worker calls do:complete directly (as remote workers would)
+            await seneca.post('sys:traverse,on:task,do:complete', {
+                task: taskEnt,
+                fragment: taskEnt.child_id,
+            });
+            return { ok: true };
+        });
+        await seneca.ready();
+        seneca.message('sys:traverse,on:run,did:complete', async function (msg) {
+            didCompleteRun = msg.run;
+            return { ok: true };
+        });
+        // Override dispatch to NOT call do:complete (worker does it via task_msg)
+        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+            const task = msg.task;
+            await seneca.post(task.task_msg, { task });
+            return { ok: true };
+        });
+        await seneca.entity('foo/h1').save$({ h0_id: 'r8' });
+        await seneca.entity('foo/h2').save$({ h0_id: 'r8' });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/h0',
+            rootEntityId: 'r8',
+            taskMsg: 'aim:task,do:collect',
+        });
+        await seneca.post('sys:traverse,on:run,do:start', {
+            runId: createRes.run.id,
+        });
+        await (0, utils_1.sleep)(100);
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: createRes.run.id });
+        for (const task of tasks) {
+            (0, code_1.expect)(task.status).equal('done');
+            (0, code_1.expect)(task.fragment).to.exist();
+        }
+        (0, code_1.expect)(didCompleteRun).to.exist();
+        (0, code_1.expect)(didCompleteRun.status).equal('completed');
+    });
+});
+//# sourceMappingURL=complete-task.test.js.map

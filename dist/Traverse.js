@@ -42,7 +42,11 @@ function Traverse(options) {
     }, msgRunStart)
         .message('on:run,do:stop', {
         runId: String,
-    }, msgRunStop);
+    }, msgRunStop)
+        .message('on:task,do:complete', {
+        task: Object,
+    }, msgTaskComplete)
+        .message('on:run,did:complete', { run: Object }, msgRunDidComplete);
     // Returns a sorted list of entity pairs
     // starting from a given entity.
     // In breadth-first order, sorting first by level,
@@ -273,7 +277,45 @@ function Traverse(options) {
     async function msgDispatch(msg) {
         const task = msg.task;
         await seneca.post(task.task_msg, { task });
+        await seneca.post('sys:traverse,on:task,do:complete', { task });
         return { ok: true };
+    }
+    async function msgTaskComplete(msg) {
+        const taskId = msg.task.id;
+        const runId = msg.task.run_id;
+        const task = await seneca
+            .entity('sys/traversetask')
+            .load$(taskId);
+        if (!task) {
+            return { ok: true };
+        }
+        task.status = 'done';
+        task.done_at = task.done_at ?? Date.now();
+        if (msg.result !== undefined)
+            task.result = msg.result;
+        if (msg.fragment !== undefined)
+            task.fragment = msg.fragment;
+        await task.save$();
+        await checkAndCompleteRun(runId);
+        return { ok: true };
+    }
+    async function msgRunDidComplete(_msg) {
+        return { ok: true };
+    }
+    async function checkAndCompleteRun(runId) {
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run || run.status !== 'active') {
+            return;
+        }
+        const doneTasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: runId, status: 'done' });
+        if (run.total_tasks > 0 && doneTasks.length >= run.total_tasks) {
+            run.status = 'completed';
+            run.completed_at = Date.now();
+            await run.save$();
+            await seneca.post('sys:traverse,on:run,did:complete', { run });
+        }
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
@@ -286,13 +328,14 @@ function Traverse(options) {
             : entityId.slice(canonSeparatorIdx + 1);
     }
     async function processRunTasks(runEnt, tasks) {
-        let run = runEnt;
         if (tasks.length === 0) {
-            run.status = 'completed';
-            run.completed_at = Date.now();
-            await run.save$();
+            runEnt.status = 'completed';
+            runEnt.completed_at = Date.now();
+            await runEnt.save$();
+            await seneca.post('sys:traverse,on:run,did:complete', { run: runEnt });
             return;
         }
+        let run = runEnt;
         for (const taskToProcess of tasks) {
             run = await seneca
                 .entity(taskToProcess.parent_canon)
@@ -314,13 +357,9 @@ function Traverse(options) {
                 task,
             });
         }
-        // `run` may be null here if the parent entity was removed mid-traversal
-        // (the reload above exists precisely to detect concurrent changes).
-        if (run && run.status !== 'stopped') {
-            run.completed_at = Date.now();
-            run.status = 'completed';
-            await run.save$();
-        }
+        // Safety net: covers restarts where some/all tasks were already done
+        // and skipped the dispatch path (no do:complete called in the loop body).
+        await checkAndCompleteRun(runEnt.id);
     }
 }
 // Default options.
