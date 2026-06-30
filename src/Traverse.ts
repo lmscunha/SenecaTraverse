@@ -23,6 +23,7 @@ import type {
   FindChildrenInput,
   CreateTaskRunInput,
   TaskExecuteInput,
+  DispatchInput,
   RunStartInput,
   RunStopInput,
 
@@ -32,9 +33,9 @@ import type {
   FindChildrenResult,
   CreateTaskRunResult,
   TaskExecuteResult,
+  DispatchResult,
   RunStartResult,
   RunStopResult,
-  TaskDispatch,
 
   // Plugin
   TraversePlugin,
@@ -90,6 +91,13 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
         task: Object,
       },
       msgTaskExecute,
+    )
+    .message(
+      'do:dispatch,on:task',
+      {
+        task: Object,
+      },
+      msgDispatch,
     )
     .message(
       'on:run,do:start',
@@ -349,10 +357,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     task.dispatched_at = Date.now()
     await task.save$()
 
-    const dispatchArg: TaskDispatch = {
-      task,
-    }
-    await seneca.post(task.task_msg, dispatchArg)
+    await seneca.post('sys:traverse,do:dispatch,on:task', { task })
 
     return { ok: true }
   }
@@ -388,6 +393,23 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     )
 
     const runTasksSpec = findChildrenRes.children
+
+    if (options.mode === 'async') {
+      for (const taskSpec of runTasksSpec) {
+        const task: TaskEntity = await seneca
+          .entity('sys/traversetask')
+          .load$(taskSpec.child_id)
+
+        if (!task || task.status === 'done' || task.status === 'dispatched') {
+          continue
+        }
+
+        seneca.post('sys:traverse,on:task,do:execute', { task })
+      }
+
+      return { ok: true, run }
+    }
+
     processRunTasks(run, runTasksSpec)
     return { ok: true, run }
   }
@@ -414,6 +436,15 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     await run.save$()
 
     return { ok: true, run }
+  }
+
+  async function msgDispatch(
+    this: Seneca,
+    msg: DispatchInput,
+  ): Promise<DispatchResult> {
+    const task = msg.task
+    await seneca.post(task.task_msg, { task })
+    return { ok: true }
   }
 
   function compareRelations(
@@ -491,6 +522,7 @@ const defaults: TraverseOptionsFull = {
   debug: false,
   rootExecute: true,
   rootEntity: 'sys/user',
+  mode: 'sync',
   relations: {
     parental: [],
   },

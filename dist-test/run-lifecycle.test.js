@@ -412,6 +412,86 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
+    (0, node_test_1.test)('async-mode-returns-before-tasks-complete', async () => {
+        let executionCount = 0;
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            mode: 'async',
+            relations: {
+                parental: [
+                    ['foo/a0', 'foo/a1'],
+                    ['foo/a0', 'foo/a2'],
+                ],
+            },
+        })
+            .message('aim:task,async:test', async function (msg) {
+            await (0, utils_1.sleep)(50);
+            executionCount++;
+            const taskEnt = msg.task;
+            taskEnt.status = 'done';
+            taskEnt.done_at = Date.now();
+            await taskEnt.save$();
+            return { ok: true };
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/a0';
+        await seneca.entity('foo/a1').save$({ a0_id: rootEntityId });
+        await seneca.entity('foo/a2').save$({ a0_id: rootEntityId });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId,
+            taskMsg: 'aim:task,async:test',
+        });
+        const runEnt = createRes.run;
+        const startedAt = Date.now();
+        const startRes = await seneca.post('sys:traverse,on:run,do:start', {
+            runId: runEnt.id,
+        });
+        const elapsed = Date.now() - startedAt;
+        (0, code_1.expect)(startRes.ok).equal(true);
+        // returned before the 50 ms task delay — not awaiting tasks
+        (0, code_1.expect)(elapsed).lessThan(40);
+        (0, code_1.expect)(executionCount).equal(0);
+        // wait for tasks to complete in background
+        await (0, utils_1.sleep)(200);
+        (0, code_1.expect)(executionCount).equal(3); // root + 2 children
+    });
+    (0, node_test_1.test)('async-mode-dispatch-pin-override', async () => {
+        const dispatched = [];
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            mode: 'async',
+            relations: {
+                parental: [['foo/b0', 'foo/b1']],
+            },
+        })
+            .message('aim:task,dispatch:test', async function () {
+            return { ok: true };
+        });
+        await seneca.ready();
+        // Override must register after ready() — Seneca loads plugins asynchronously,
+        // so the plugin's handler is registered during ready(). A pre-ready .message()
+        // call would be overwritten by the plugin. Hosts override the same way.
+        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+            dispatched.push(msg.task.child_canon);
+            return { ok: true };
+        });
+        const rootEntityId = '123';
+        const rootEntity = 'foo/b0';
+        await seneca.entity('foo/b1').save$({ b0_id: rootEntityId });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId,
+            taskMsg: 'aim:task,dispatch:test',
+        });
+        await seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id });
+        await (0, utils_1.sleep)(50);
+        // override intercepts all dispatches; default transport never called
+        (0, code_1.expect)(dispatched.length).equal(2); // root + 1 child
+        (0, code_1.expect)(dispatched).includes('foo/b0');
+        (0, code_1.expect)(dispatched).includes('foo/b1');
+    });
     (0, node_test_1.test)('restart-run-previously-stopped', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {

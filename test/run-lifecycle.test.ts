@@ -533,6 +533,109 @@ describe('Traverse: run lifecycle', () => {
     expect(run.status).equal('completed')
   })
 
+  test('async-mode-returns-before-tasks-complete', async () => {
+    let executionCount = 0
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        relations: {
+          parental: [
+            ['foo/a0', 'foo/a1'],
+            ['foo/a0', 'foo/a2'],
+          ],
+        },
+      })
+      .message('aim:task,async:test', async function (this: any, msg: any) {
+        await sleep(50)
+        executionCount++
+        const taskEnt = msg.task
+        taskEnt.status = 'done'
+        taskEnt.done_at = Date.now()
+        await taskEnt.save$()
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/a0'
+
+    await seneca.entity('foo/a1').save$({ a0_id: rootEntityId })
+    await seneca.entity('foo/a2').save$({ a0_id: rootEntityId })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,async:test',
+    })
+
+    const runEnt = createRes.run
+
+    const startedAt = Date.now()
+    const startRes = await seneca.post('sys:traverse,on:run,do:start', {
+      runId: runEnt.id,
+    })
+    const elapsed = Date.now() - startedAt
+
+    expect(startRes.ok).equal(true)
+    // returned before the 50 ms task delay — not awaiting tasks
+    expect(elapsed).lessThan(40)
+    expect(executionCount).equal(0)
+
+    // wait for tasks to complete in background
+    await sleep(200)
+    expect(executionCount).equal(3) // root + 2 children
+  })
+
+  test('async-mode-dispatch-pin-override', async () => {
+    const dispatched: string[] = []
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        relations: {
+          parental: [['foo/b0', 'foo/b1']],
+        },
+      })
+      .message('aim:task,dispatch:test', async function () {
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    // Override must register after ready() — Seneca loads plugins asynchronously,
+    // so the plugin's handler is registered during ready(). A pre-ready .message()
+    // call would be overwritten by the plugin. Hosts override the same way.
+    seneca.message(
+      'sys:traverse,do:dispatch,on:task',
+      async function (this: any, msg: any) {
+        dispatched.push(msg.task.child_canon)
+        return { ok: true }
+      },
+    )
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/b0'
+
+    await seneca.entity('foo/b1').save$({ b0_id: rootEntityId })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,dispatch:test',
+    })
+
+    await seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id })
+
+    await sleep(50)
+
+    // override intercepts all dispatches; default transport never called
+    expect(dispatched.length).equal(2) // root + 1 child
+    expect(dispatched).includes('foo/b0')
+    expect(dispatched).includes('foo/b1')
+  })
+
   test('restart-run-previously-stopped', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
