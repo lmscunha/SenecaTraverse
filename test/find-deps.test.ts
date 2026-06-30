@@ -1,13 +1,11 @@
-/* Copyright © 2025 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
 import { describe, test } from 'node:test'
 import { expect } from '@hapi/code'
 
-import Seneca from 'seneca'
-
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca } from './utils'
 
 describe('Traverse: find:deps', () => {
   test('find-deps', async () => {

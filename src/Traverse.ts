@@ -1,4 +1,4 @@
-/* Copyright © 2025 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
 import { Optional } from 'gubu'
 

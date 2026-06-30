@@ -1,9 +1,7 @@
-/* Copyright © 2025 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
 import { describe, test } from 'node:test'
 import { expect } from '@hapi/code'
-
-import Seneca from 'seneca'
 
 import Traverse from '..'
 
