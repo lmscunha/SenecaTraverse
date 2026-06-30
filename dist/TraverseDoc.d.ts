@@ -9,13 +9,25 @@ declare const docs: {
         msgCreateTaskRun: {
             desc: string;
         };
+        msgTaskExecute: {
+            desc: string;
+        };
+        msgDispatch: {
+            desc: string;
+        };
         msgRunStart: {
             desc: string;
         };
         msgRunStop: {
             desc: string;
         };
-        msgTaskExecute: {
+        msgTaskComplete: {
+            desc: string;
+        };
+        msgRunDidComplete: {
+            desc: string;
+        };
+        msgRunClaim: {
             desc: string;
         };
     };
