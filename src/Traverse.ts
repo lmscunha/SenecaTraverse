@@ -28,6 +28,7 @@ import type {
   RunStopInput,
   TaskCompleteInput,
   RunDidCompleteInput,
+  RunClaimInput,
 
   // Output Types
   InvalidResult,
@@ -40,6 +41,7 @@ import type {
   RunStopResult,
   TaskCompleteResult,
   RunDidCompleteResult,
+  RunClaimResult,
 
   // Plugin
   TraversePlugin,
@@ -125,6 +127,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       msgTaskComplete,
     )
     .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
+    .message('on:run,do:claim', { run: Object }, msgRunClaim)
 
   // Returns a sorted list of entity pairs
   // starting from a given entity.
@@ -419,6 +422,11 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
         seneca.post('sys:traverse,on:task,do:execute', { task })
       }
 
+      // Complete immediately when there is nothing to dispatch (zero tasks, or
+      // all already done on a restart); the async loop never routes through the
+      // barrier otherwise, leaving the run stuck 'active'.
+      await checkAndCompleteRun(run.id)
+
       return { ok: true, run }
     }
 
@@ -493,6 +501,42 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
+  // Default completion claim: best-effort (load-count-set). Transitions an
+  // active run to `completed` only when all its tasks are done, and reports
+  // whether THIS call won the transition. Concentrating the check-and-set in
+  // one overridable pin lets hosts with concurrent distributed workers swap in
+  // a store-level conditional write (e.g. DynamoDB attribute_not_exists) so the
+  // claim is truly atomic and did:complete fires exactly once.
+  async function msgRunClaim(
+    this: Seneca,
+    msg: RunClaimInput,
+  ): Promise<RunClaimResult> {
+    const run: RunEntity = await seneca
+      .entity('sys/traverse')
+      .load$(msg.run.id)
+
+    if (!run || run.status !== 'active') {
+      return { ok: true, claimed: false, run }
+    }
+
+    const doneTasks = await seneca
+      .entity('sys/traversetask')
+      .list$({ run_id: run.id, status: 'done' })
+
+    if (doneTasks.length < run.total_tasks) {
+      return { ok: true, claimed: false, run }
+    }
+
+    run.status = 'completed'
+    run.completed_at = Date.now()
+    await run.save$()
+
+    return { ok: true, claimed: true, run }
+  }
+
+  // Attempt to complete a run via the (overridable) claim pin; emit
+  // did:complete only for the caller that wins the claim, so the hook fires
+  // exactly once per run.
   async function checkAndCompleteRun(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
@@ -500,15 +544,15 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       return
     }
 
-    const doneTasks = await seneca
-      .entity('sys/traversetask')
-      .list$({ run_id: runId, status: 'done' })
+    const claimRes: RunClaimResult = await seneca.post(
+      'sys:traverse,on:run,do:claim',
+      { run },
+    )
 
-    if (run.total_tasks > 0 && doneTasks.length >= run.total_tasks) {
-      run.status = 'completed'
-      run.completed_at = Date.now()
-      await run.save$()
-      await seneca.post('sys:traverse,on:run,did:complete', { run })
+    if (claimRes.claimed) {
+      await seneca.post('sys:traverse,on:run,did:complete', {
+        run: claimRes.run,
+      })
     }
   }
 
@@ -534,10 +578,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     tasks: ChildInstance[],
   ): Promise<void> {
     if (tasks.length === 0) {
-      runEnt.status = 'completed'
-      runEnt.completed_at = Date.now()
-      await runEnt.save$()
-      await seneca.post('sys:traverse,on:run,did:complete', { run: runEnt })
+      await checkAndCompleteRun(runEnt.id)
       return
     }
 

@@ -385,4 +385,110 @@ describe('Traverse: complete task barrier', () => {
     expect(didCompleteRun).to.exist()
     expect(didCompleteRun.status).equal('completed')
   })
+
+  test('claim-pin-gates-did-complete', async () => {
+    // Overriding on:run,do:claim to never claim must suppress did:complete even
+    // when every task is done — proving the emission is gated by the claim pin
+    // (the seam a distributed host swaps for an atomic conditional write).
+    let completionCount = 0
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        rootExecute: false,
+        relations: { parental: [['foo/i0', 'foo/i1']] },
+      })
+      .message('aim:task,do:noop', async function () {
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    seneca.message(
+      'sys:traverse,on:run,did:complete',
+      async function (this: any) {
+        completionCount++
+        return { ok: true }
+      },
+    )
+
+    seneca.message(
+      'sys:traverse,on:run,do:claim',
+      async function (this: any, msg: any) {
+        return { ok: true, claimed: false, run: msg.run }
+      },
+    )
+
+    await seneca.entity('foo/i1').save$({ i0_id: 'r9' })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity: 'foo/i0',
+      rootEntityId: 'r9',
+      taskMsg: 'aim:task,do:noop',
+    })
+
+    const run = createRes.run
+    await seneca
+      .entity('sys/traverse')
+      .load$(run.id)
+      .then((r: any) => {
+        r.status = 'active'
+        return r.save$()
+      })
+
+    const tasks = await seneca
+      .entity('sys/traversetask')
+      .list$({ run_id: run.id })
+
+    await seneca.post('sys:traverse,on:task,do:complete', { task: tasks[0] })
+
+    expect(completionCount).equal(0)
+    const stillActive = await seneca.entity('sys/traverse').load$(run.id)
+    expect(stillActive.status).equal('active')
+  })
+
+  test('async-mode-zero-tasks-completes', async () => {
+    // A run with no tasks must still reach 'completed' (and fire did:complete)
+    // in async mode; the dispatch loop never routes through the barrier.
+    let didCompleteRun: any = null
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        rootExecute: false,
+        relations: { parental: [['foo/j0', 'foo/j1']] },
+      })
+      .message('aim:task,do:noop', async function () {
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    seneca.message(
+      'sys:traverse,on:run,did:complete',
+      async function (this: any, msg: any) {
+        didCompleteRun = msg.run
+        return { ok: true }
+      },
+    )
+
+    // No foo/j1 rows saved → zero children → zero tasks.
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity: 'foo/j0',
+      rootEntityId: 'r10',
+      taskMsg: 'aim:task,do:noop',
+    })
+
+    expect(createRes.run.total_tasks).equal(0)
+
+    await seneca.post('sys:traverse,on:run,do:start', {
+      runId: createRes.run.id,
+    })
+
+    await sleep(50)
+
+    const run = await seneca.entity('sys/traverse').load$(createRes.run.id)
+    expect(run.status).equal('completed')
+    expect(didCompleteRun).to.exist()
+    expect(didCompleteRun.id).equal(createRes.run.id)
+  })
 })
