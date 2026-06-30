@@ -7,10 +7,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: find:children', () => {
     (0, node_test_1.test)('find-children', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -180,7 +180,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-empty-relations', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default);
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default);
         await seneca.ready();
         const rootEntityId = '123';
         const res = await seneca.post('sys:traverse,find:children', {
@@ -190,7 +190,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.children).equal([]);
     });
     (0, node_test_1.test)('find-children-no-matching-entities', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -208,7 +208,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.children).equal([]);
     });
     (0, node_test_1.test)('find-children-partial-tree', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -248,7 +248,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-default-root-entity', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['sys/user', 'user/settings'],
@@ -294,7 +294,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-avoid-wrong-children', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -339,7 +339,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-single-entity-tree', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [['foo/bar0', 'foo/bar1']],
             },
@@ -363,7 +363,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-deep-linear-chain', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -429,7 +429,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-custom-key', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             customRef: {
                 'foo/bar2': 'custom0_id',
                 'foo/bar3': 'custom1_test',
@@ -479,7 +479,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-multi-inst', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -542,7 +542,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-multiple-inst-multi-levels', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -666,7 +666,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-children-single-cycle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['A', 'B'],

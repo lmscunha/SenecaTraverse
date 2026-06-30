@@ -7,10 +7,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: run lifecycle', () => {
     (0, node_test_1.test)('start-run', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -69,7 +69,7 @@ const support_1 = require("./support");
         });
         (0, code_1.expect)(startRunRes.ok).true();
         // TODO: improve async validation
-        await (0, support_1.sleep)(50);
+        await (0, utils_1.sleep)(50);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -79,7 +79,7 @@ const support_1 = require("./support");
         }
     });
     (0, node_test_1.test)('start-run-with-client-sleep', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -103,7 +103,7 @@ const support_1 = require("./support");
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task;
             // Simulate some async work to increase chance of race conditions
-            await (0, support_1.sleep)(Math.random() * 10);
+            await (0, utils_1.sleep)(Math.random() * 10);
             // Mark task as done
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
@@ -148,7 +148,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(startRunRes.ok).equal(true);
         // Wait for all tasks to complete
         // TODO: improve async validation
-        await (0, support_1.sleep)(200);
+        await (0, utils_1.sleep)(200);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -169,7 +169,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('start-run-no-children', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default)
             .message('aim:task,empty:test', async function (msg) {
             const taskEnt = msg.task;
@@ -197,7 +197,7 @@ const support_1 = require("./support");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, support_1.sleep)(50);
+        await (0, utils_1.sleep)(50);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -206,7 +206,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('star-run-deep', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -248,7 +248,7 @@ const support_1 = require("./support");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, support_1.sleep)(150);
+        await (0, utils_1.sleep)(150);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -265,7 +265,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('stop-run', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -311,7 +311,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(stopRunRes.run.status).equal('stopped');
     });
     (0, node_test_1.test)('stop-run-block-completion', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -325,7 +325,7 @@ const support_1 = require("./support");
         })
             .message('aim:task,deep:test', async function (msg) {
             const taskEnt = msg.task;
-            await (0, support_1.sleep)(Math.random() * 15);
+            await (0, utils_1.sleep)(Math.random() * 15);
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
             await taskEnt.save$();
@@ -360,7 +360,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(run.status).equal('stopped');
     });
     (0, node_test_1.test)('restart-run', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -401,7 +401,7 @@ const support_1 = require("./support");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, support_1.sleep)(100);
+        await (0, utils_1.sleep)(100);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -413,7 +413,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('restart-run-previously-stopped', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -462,7 +462,7 @@ const support_1 = require("./support");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, support_1.sleep)(100);
+        await (0, utils_1.sleep)(100);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });

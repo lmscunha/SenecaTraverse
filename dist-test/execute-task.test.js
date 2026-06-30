@@ -7,10 +7,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: execute task', () => {
     (0, node_test_1.test)('execute-task', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -68,7 +68,7 @@ const support_1 = require("./support");
     });
     (0, node_test_1.test)('execute-task-double', async () => {
         let executionCount = 0;
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [['foo/bar0', 'foo/bar1']],
@@ -101,7 +101,7 @@ const support_1 = require("./support");
         const exec2 = seneca.post('sys:traverse,on:task,do:execute', { task });
         await Promise.all([exec1, exec2]);
         // TODO: improve async validation
-        await (0, support_1.sleep)(50);
+        await (0, utils_1.sleep)(50);
         (0, code_1.expect)(executionCount).equal(1);
         const updatedTask = await seneca.entity('sys/traversetask').load$(task.id);
         (0, code_1.expect)(updatedTask.status).equal('done');

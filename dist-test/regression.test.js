@@ -7,7 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: regression', () => {
     // Bug: plugin init pushed the injected ['sys/traverse','sys/traversetask']
     // relation into options.relations.parental in place. Seneca passes the
@@ -19,7 +19,7 @@ const support_1 = require("./support");
             ['foo/bar0', 'foo/bar1'],
             ['foo/bar0', 'foo/bar2'],
         ];
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: { parental },
         });
         await seneca.ready();
@@ -43,7 +43,7 @@ const support_1 = require("./support");
     // throwing a TypeError (surfacing as an unhandled rejection since the run
     // loop is fire-and-forget). The completion block must tolerate a null run.
     (0, node_test_1.test)('run-removed-mid-traversal-does-not-throw', async () => {
-        const seneca = (0, support_1.makeSeneca)()
+        const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
                 parental: [
@@ -79,7 +79,7 @@ const support_1 = require("./support");
                 runId: createTaskRes.run.id,
             });
             // Let the fire-and-forget traversal finish (or throw).
-            await (0, support_1.sleep)(300);
+            await (0, utils_1.sleep)(300);
         }
         finally {
             process.removeListener('unhandledRejection', onRejection);

@@ -7,10 +7,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
-const support_1 = require("./support");
+const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: find:deps', () => {
     (0, node_test_1.test)('find-deps', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -62,7 +62,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-empty-list', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [],
             },
@@ -75,7 +75,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.deps).equal([]);
     });
     (0, node_test_1.test)('find-deps-no-children', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar1', 'foo/bar2'],
@@ -91,7 +91,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.deps).equal([]);
     });
     (0, node_test_1.test)('find-deps-cycle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -113,7 +113,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-cycle-middle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -138,7 +138,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-linear', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -161,7 +161,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-duplicate', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -183,7 +183,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-convergent', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -209,7 +209,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-two-convergent', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -239,7 +239,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-self-ref', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar0', 'foo/bar1'],
@@ -260,14 +260,14 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-all-default', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default);
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default);
         await seneca.ready();
         const res = await seneca.post('sys:traverse,find:deps');
         // console.log('RES', res)
         (0, code_1.expect)(res.deps).equal([]);
     });
     (0, node_test_1.test)('find-deps-empty-list', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [],
             },
@@ -280,7 +280,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.deps).equal([]);
     });
     (0, node_test_1.test)('find-deps-l1', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -318,7 +318,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l1-convergent', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -362,7 +362,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l1-cycle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -404,7 +404,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l2', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -439,7 +439,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l2-convergent', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -484,7 +484,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l2-cycle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -525,7 +525,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-l2-multi-level-convergent', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['foo/bar2', 'foo/bar3'],
@@ -572,7 +572,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-single-cycle', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['A', 'B'],
@@ -605,7 +605,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-single-missing-node', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['A', 'B'],
@@ -622,7 +622,7 @@ const support_1 = require("./support");
         (0, code_1.expect)(res.deps).equal([]);
     });
     (0, node_test_1.test)('find-deps-deep-linear-chain', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['node0', 'node1'],
@@ -656,7 +656,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-binary-tree', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['A', 'B'],
@@ -693,7 +693,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-diamond-pattern', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['A', 'B'],
@@ -720,7 +720,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-mixed-alph-sort', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['root', 'node10'],
@@ -753,7 +753,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-all-nodes-converge-to-one', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     ['root', 'A'],
@@ -783,7 +783,7 @@ const support_1 = require("./support");
         ]);
     });
     (0, node_test_1.test)('find-deps-deep-10-levels-complex', async () => {
-        const seneca = (0, support_1.makeSeneca)().use(__1.default, {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {
                 parental: [
                     // ========== LEVEL 0 → LEVEL 1 ==========
