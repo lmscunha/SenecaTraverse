@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './support'
+import { makeSeneca, sleep } from './utils'
 
 describe('Traverse: regression', () => {
   // Bug: plugin init pushed the injected ['sys/traverse','sys/traversetask']
