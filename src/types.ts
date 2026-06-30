@@ -66,6 +66,8 @@ export type TaskEntity = {
   task_msg: Message
   dispatched_at?: Timestamp
   done_at?: Timestamp
+  result?: unknown
+  fragment?: unknown
 } & ChildInstance &
   Entity
 
@@ -128,6 +130,23 @@ export interface RunStopInput {
   runId: string
 }
 
+/** Input for on:task,do:complete message */
+export interface TaskCompleteInput {
+  task: TaskEntity
+  result?: unknown
+  fragment?: unknown
+}
+
+/** Input for on:run,did:complete message */
+export interface RunDidCompleteInput {
+  run: RunEntity
+}
+
+/** Input for on:run,do:claim message */
+export interface RunClaimInput {
+  run: RunEntity
+}
+
 // ============================================================================
 // Message Output Types
 // ============================================================================
@@ -186,6 +205,30 @@ export interface RunStopResult extends BaseResult {
   run: RunEntity
 }
 
+/** Result for on:task,do:complete message */
+export interface TaskCompleteResult extends BaseResult {
+  ok: true
+}
+
+/** Result for on:run,did:complete message */
+export interface RunDidCompleteResult extends BaseResult {
+  ok: true
+}
+
+/**
+ * Result for on:run,do:claim message.
+ * `claimed` is true for exactly one caller — the one that won the transition to
+ * `completed`. The default impl is best-effort (load-count-set); hosts running
+ * concurrent distributed workers should override on:run,do:claim with a
+ * store-level conditional write (e.g. DynamoDB attribute_not_exists) to make
+ * the claim truly atomic and guarantee a single did:complete.
+ */
+export interface RunClaimResult extends BaseResult {
+  ok: true
+  claimed: boolean
+  run: RunEntity
+}
+
 // ============================================================================
 // Internal/Helper Types
 // ============================================================================
@@ -216,6 +259,13 @@ export type MsgRunStartFn = (
 export type MsgRunStopFn = (
   msg: RunStopInput,
 ) => Promise<RunStopResult | InvalidResult>
+export type MsgTaskCompleteFn = (
+  msg: TaskCompleteInput,
+) => Promise<TaskCompleteResult>
+export type MsgRunDidCompleteFn = (
+  msg: RunDidCompleteInput,
+) => Promise<RunDidCompleteResult>
+export type MsgRunClaimFn = (msg: RunClaimInput) => Promise<RunClaimResult>
 
 // ============================================================================
 // Plugin Export Type
