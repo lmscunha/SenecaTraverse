@@ -34,6 +34,9 @@ function Traverse(options) {
         .message('on:task,do:execute', {
         task: Object,
     }, msgTaskExecute)
+        .message('do:dispatch,on:task', {
+        task: Object,
+    }, msgDispatch)
         .message('on:run,do:start', {
         runId: String,
     }, msgRunStart)
@@ -215,10 +218,7 @@ function Traverse(options) {
         task.status = 'dispatched';
         task.dispatched_at = Date.now();
         await task.save$();
-        const dispatchArg = {
-            task,
-        };
-        await seneca.post(task.task_msg, dispatchArg);
+        await seneca.post('sys:traverse,do:dispatch,on:task', { task });
         return { ok: true };
     }
     // Start a Run process execution,
@@ -240,6 +240,18 @@ function Traverse(options) {
             rootEntityId: run.id,
         });
         const runTasksSpec = findChildrenRes.children;
+        if (options.mode === 'async') {
+            for (const taskSpec of runTasksSpec) {
+                const task = await seneca
+                    .entity('sys/traversetask')
+                    .load$(taskSpec.child_id);
+                if (!task || task.status === 'done' || task.status === 'dispatched') {
+                    continue;
+                }
+                seneca.post('sys:traverse,on:task,do:execute', { task });
+            }
+            return { ok: true, run };
+        }
         processRunTasks(run, runTasksSpec);
         return { ok: true, run };
     }
@@ -257,6 +269,11 @@ function Traverse(options) {
         run.status = 'stopped';
         await run.save$();
         return { ok: true, run };
+    }
+    async function msgDispatch(msg) {
+        const task = msg.task;
+        await seneca.post(task.task_msg, { task });
+        return { ok: true };
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
@@ -312,6 +329,7 @@ const defaults = {
     debug: false,
     rootExecute: true,
     rootEntity: 'sys/user',
+    mode: 'sync',
     relations: {
         parental: [],
     },
