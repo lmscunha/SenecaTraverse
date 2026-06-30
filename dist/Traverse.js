@@ -4,6 +4,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
     const seneca = this;
+    // Returns the Seneca instance to use for entity operations.
+    // scope:'root' bypasses principal-scoping so the run can access entities
+    // owned by other principals (e.g. a support-triggered PII report that must
+    // read user data regardless of the caller's org context).
+    const se = () => (options.scope === 'root' ? seneca.root : seneca);
     // A Run process can have multiple tasks as children.
     // Thus, this plugin automatically maps these relations for the client.
     options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
@@ -114,7 +119,7 @@ function Traverse(options) {
             }
             const childInstancesSet = parentInstanceMap.get(childCanon);
             const childQueryPromises = Array.from(parentInstances).map(async (parentId) => {
-                const childInstances = await seneca.entity(childCanon).list$({
+                const childInstances = await se().entity(childCanon).list$({
                     [foreignRef]: parentId,
                     fields$: ['id'],
                 });
@@ -146,7 +151,7 @@ function Traverse(options) {
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
         const isRootIncluded = options.rootExecute;
-        const run = await seneca.entity('sys/traverse').save$({
+        const run = await se().entity('sys/traverse').save$({
             root_entity: rootEntity,
             root_id: rootEntityId,
             status: 'created',
@@ -161,7 +166,7 @@ function Traverse(options) {
         if (isRootIncluded) {
             // Process the action on the root data storage,
             // not only on its children.
-            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
+            tasksCreationPromises.push(se().entity('sys/traversetask').save$({
                 run_id: run.id,
                 parent_id: rootEntityId,
                 child_id: rootEntityId,
@@ -172,7 +177,7 @@ function Traverse(options) {
             }));
         }
         findChildrenRes.children.forEach((child) => {
-            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
+            tasksCreationPromises.push(se().entity('sys/traversetask').save$({
                 run_id: run.id,
                 parent_id: child.parent_id,
                 child_id: child.child_id,
@@ -183,12 +188,12 @@ function Traverse(options) {
             }));
         });
         const tasksCreationRes = await Promise.allSettled(tasksCreationPromises);
-        let taskSuccessCount = 0;
+        const createdTasks = [];
         let taskFailedCount = 0;
         let childIdx = isRootIncluded ? -1 : 0;
         for (const taskCreation of tasksCreationRes) {
             if (taskCreation.status === 'fulfilled') {
-                taskSuccessCount++;
+                createdTasks.push(taskCreation.value);
                 childIdx++;
                 continue;
             }
@@ -196,7 +201,6 @@ function Traverse(options) {
             const childrenData = childIdx === -1
                 ? { child_canon: rootEntity, child_id: rootEntityId }
                 : findChildrenRes.children[childIdx];
-            // TODO: add retry
             seneca.log.error('task-create-failed', {
                 child_canon: childrenData?.child_canon,
                 child_id: childrenData?.child_id,
@@ -204,13 +208,22 @@ function Traverse(options) {
             });
             childIdx++;
         }
-        run.total_tasks = taskSuccessCount;
+        if (taskFailedCount > 0) {
+            // Atomic rollback: any creation failure is unrecoverable — delete all
+            // created tasks and the run so the caller can retry from a clean state.
+            await Promise.allSettled([
+                ...createdTasks.map((t) => t.remove$()),
+                run.remove$(),
+            ]);
+            return { ok: false, why: 'task-create-failed', tasksCreated: 0, tasksFailed: taskFailedCount };
+        }
+        run.total_tasks = createdTasks.length;
         await run.save$();
         return {
             ok: true,
             run,
-            tasksCreated: taskSuccessCount,
-            tasksFailed: taskFailedCount,
+            tasksCreated: createdTasks.length,
+            tasksFailed: 0,
         };
     }
     // Execute a single Run task.
@@ -229,7 +242,7 @@ function Traverse(options) {
     // dispatching the next pending child task.
     async function msgRunStart(msg) {
         const runId = msg.runId;
-        const run = await seneca.entity('sys/traverse').load$(runId);
+        const run = await se().entity('sys/traverse').load$(runId);
         if (!run?.status) {
             return { ok: false, why: 'run-entity-not-found' };
         }
@@ -246,7 +259,7 @@ function Traverse(options) {
         const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
             for (const taskSpec of runTasksSpec) {
-                const task = await seneca
+                const task = await se()
                     .entity('sys/traversetask')
                     .load$(taskSpec.child_id);
                 if (!task || task.status === 'done' || task.status === 'dispatched') {
@@ -263,7 +276,7 @@ function Traverse(options) {
     // preventing the dispatching of the next pending child task.
     async function msgRunStop(msg) {
         const runId = msg.runId;
-        const run = await seneca.entity('sys/traverse').load$(runId);
+        const run = await se().entity('sys/traverse').load$(runId);
         if (!run?.status) {
             return { ok: false, why: 'run-entity-not-found' };
         }
@@ -283,7 +296,7 @@ function Traverse(options) {
     async function msgTaskComplete(msg) {
         const taskId = msg.task.id;
         const runId = msg.task.run_id;
-        const task = await seneca
+        const task = await se()
             .entity('sys/traversetask')
             .load$(taskId);
         if (!task) {
@@ -303,11 +316,11 @@ function Traverse(options) {
         return { ok: true };
     }
     async function checkAndCompleteRun(runId) {
-        const run = await seneca.entity('sys/traverse').load$(runId);
+        const run = await se().entity('sys/traverse').load$(runId);
         if (!run || run.status !== 'active') {
             return;
         }
-        const doneTasks = await seneca
+        const doneTasks = await se()
             .entity('sys/traversetask')
             .list$({ run_id: runId, status: 'done' });
         if (run.total_tasks > 0 && doneTasks.length >= run.total_tasks) {
@@ -337,13 +350,12 @@ function Traverse(options) {
         }
         let run = runEnt;
         for (const taskToProcess of tasks) {
-            run = await seneca
-                .entity(taskToProcess.parent_canon)
-                .load$(taskToProcess.parent_id);
+            // Reload the run (not the task's parent entity) to detect concurrent stops.
+            run = await se().entity('sys/traverse').load$(runEnt.id);
             if (!run || run.status === 'stopped') {
                 break;
             }
-            const task = await seneca
+            const task = await se()
                 .entity('sys/traversetask')
                 .load$(taskToProcess.child_id);
             if (!task) {
@@ -369,6 +381,7 @@ const defaults = {
     rootExecute: true,
     rootEntity: 'sys/user',
     mode: 'sync',
+    scope: 'principal',
     relations: {
         parental: [],
     },
