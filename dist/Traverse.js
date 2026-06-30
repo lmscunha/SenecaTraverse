@@ -7,7 +7,13 @@ function Traverse(options) {
     // A Run process can have multiple tasks as children.
     // Thus, this plugin automatically maps these relations for the client.
     options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
-    options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
+    // Build a new array instead of pushing in place: the incoming options may
+    // share the defaults' `parental` reference, and mutating it would leak the
+    // injected relation across plugin loads (accumulating duplicates).
+    options.relations = {
+        ...options.relations,
+        parental: [...options.relations.parental, ['sys/traverse', 'sys/traversetask']],
+    };
     seneca
         .fix('sys:traverse')
         .message('find:deps', {
@@ -290,7 +296,9 @@ function Traverse(options) {
                 task,
             });
         }
-        if (run?.status !== 'stopped') {
+        // `run` may be null here if the parent entity was removed mid-traversal
+        // (the reload above exists precisely to detect concurrent changes).
+        if (run && run.status !== 'stopped') {
             run.completed_at = Date.now();
             run.status = 'completed';
             await run.save$();
