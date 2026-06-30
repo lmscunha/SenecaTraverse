@@ -2,72 +2,48 @@
 
 import { Optional } from 'gubu'
 
-type EntityID = string
-type UUID = string
-type Timestamp = number
-type Message = string | object
+import type {
+  // Base Types
+  Seneca,
+  EntityID,
+  UUID,
+  Parental,
+  ParentChildRelation,
 
-type ParentChildRelation = [EntityID, EntityID]
-type Parental = ParentChildRelation[]
+  // Entity Types
+  ChildInstance,
+  RunEntity,
+  TaskEntity,
 
-type ChildInstance = {
-  parent_id: UUID
-  child_id: UUID
-  parent_canon: EntityID
-  child_canon: EntityID
-}
+  // Options
+  TraverseOptionsFull,
 
-type Entity = {
-  save$: Function
-  load$: Function
-  list$: Function
-  remove$: Function
-}
+  // Input Types
+  FindDepsInput,
+  FindChildrenInput,
+  CreateTaskRunInput,
+  TaskExecuteInput,
+  RunStartInput,
+  RunStopInput,
 
-type RunEntity = {
-  id: UUID
-  root_entity: EntityID
-  root_id: UUID
-  task_msg: Message
-  status: 'created' | 'active' | 'completed' | 'stopped'
-  total_tasks: number
-  started_at?: Timestamp
-  completed_at?: Timestamp
-} & Entity
+  // Output Types
+  InvalidResult,
+  FindDepsResult,
+  FindChildrenResult,
+  CreateTaskRunResult,
+  TaskExecuteResult,
+  RunStartResult,
+  RunStopResult,
+  TaskDispatch,
 
-type TaskEntity = {
-  id: UUID
-  run_id: UUID
-  status: 'pending' | 'dispatched' | 'done'
-  task_msg: Message
-  dispatched_at?: Timestamp
-  done_at?: Timestamp
-} & ChildInstance &
-  Entity
+  // Plugin
+  TraversePlugin,
+} from './types'
 
-type TraverseOptionsFull = {
-  debug: boolean
-  rootExecute: boolean
-  rootEntity: EntityID
-  relations: {
-    parental: Parental
-  }
-  customRef: Record<EntityID, string>
-}
+export type { TraverseOptions } from './types'
 
-interface FindChildren {
-  ok: boolean
-  children: ChildInstance[]
-}
-
-interface TaskDispatch {
-  task: TaskEntity
-}
-
-export type TraverseOptions = Partial<TraverseOptionsFull>
-
-function Traverse(this: any, options: TraverseOptionsFull) {
-  const seneca: any = this
+function Traverse(this: Seneca, options: TraverseOptionsFull) {
+  const seneca = this
   // A Run process can have multiple tasks as children.
   // Thus, this plugin automatically maps these relations for the client.
   options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
@@ -76,7 +52,10 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // injected relation across plugin loads (accumulating duplicates).
   options.relations = {
     ...options.relations,
-    parental: [...options.relations.parental, ['sys/traverse', 'sys/traversetask']],
+    parental: [
+      ...options.relations.parental,
+      ['sys/traverse', 'sys/traversetask'],
+    ],
   }
 
   seneca
@@ -132,12 +111,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // In breadth-first order, sorting first by level,
   // then alphabetically in each level.
   async function msgFindDeps(
-    this: any,
-    msg: {
-      rootEntity?: EntityID
-    },
-  ): Promise<{ ok: boolean; deps: ParentChildRelation[] }> {
-    // const seneca = this
+    this: Seneca,
+    msg: FindDepsInput,
+  ): Promise<FindDepsResult> {
     const allRelations: Parental = options.relations.parental
     const rootEntity = msg.rootEntity || options.rootEntity
     const deps: ParentChildRelation[] = []
@@ -191,12 +167,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // Returns all discovered child
   // instances with their parent relationship.
   async function msgFindChildren(
-    this: any,
-    msg: {
-      rootEntity?: EntityID
-      rootEntityId: UUID
-    },
-  ): Promise<FindChildren> {
+    this: Seneca,
+    msg: FindChildrenInput,
+  ): Promise<FindChildrenResult> {
     const rootEntity: EntityID = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
     const customRef = options.customRef
@@ -264,18 +237,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // Create a run process and generate tasks
   // for each child entity to be executed.
   async function msgCreateTaskRun(
-    this: any,
-    msg: {
-      rootEntity?: EntityID
-      rootEntityId: UUID
-      taskMsg: Message
-    },
-  ): Promise<{
-    ok: boolean
-    run: RunEntity
-    tasksCreated: number
-    tasksFailed: number
-  }> {
+    this: Seneca,
+    msg: CreateTaskRunInput,
+  ): Promise<CreateTaskRunResult> {
     const taskMsg = msg.taskMsg
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
@@ -289,7 +253,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
       total_tasks: 0,
     })
 
-    const findChildrenRes: FindChildren = await seneca.post(
+    const findChildrenRes: FindChildrenResult = await seneca.post(
       'sys:traverse,find:children',
       {
         rootEntity,
@@ -375,13 +339,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
 
   // Execute a single Run task.
   async function msgTaskExecute(
-    this: any,
-    msg: {
-      task: TaskEntity
-    },
-  ): Promise<{
-    ok: boolean
-  }> {
+    this: Seneca,
+    msg: TaskExecuteInput,
+  ): Promise<TaskExecuteResult> {
     const task = msg.task
 
     if (task.status == 'done' || task.status == 'dispatched') {
@@ -403,15 +363,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // Start a Run process execution,
   // dispatching the next pending child task.
   async function msgRunStart(
-    this: any,
-    msg: {
-      runId: string
-    },
-  ): Promise<{
-    ok: boolean
-    why?: string
-    run?: RunEntity
-  }> {
+    this: Seneca,
+    msg: RunStartInput,
+  ): Promise<RunStartResult | InvalidResult> {
     const runId = msg.runId
 
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
@@ -428,7 +382,7 @@ function Traverse(this: any, options: TraverseOptionsFull) {
     run.started_at = Date.now()
     await run.save$()
 
-    const findChildrenRes: FindChildren = await seneca.post(
+    const findChildrenRes: FindChildrenResult = await seneca.post(
       'sys:traverse,find:children',
       {
         rootEntity: 'sys/traverse',
@@ -444,15 +398,9 @@ function Traverse(this: any, options: TraverseOptionsFull) {
   // Stop a Run process execution,
   // preventing the dispatching of the next pending child task.
   async function msgRunStop(
-    this: any,
-    msg: {
-      runId: string
-    },
-  ): Promise<{
-    ok: boolean
-    why?: string
-    run?: RunEntity
-  }> {
+    this: Seneca,
+    msg: RunStopInput,
+  ): Promise<RunStopResult | InvalidResult> {
     const runId = msg.runId
 
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
@@ -554,7 +502,7 @@ const defaults: TraverseOptionsFull = {
 
 Object.assign(Traverse, { defaults })
 
-export default Traverse
+export default Traverse as TraversePlugin
 
 if ('undefined' !== typeof module) {
   module.exports = Traverse
