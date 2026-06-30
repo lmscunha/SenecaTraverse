@@ -57,6 +57,7 @@ export type TraverseOptionsFull = {
     rootExecute: boolean;
     rootEntity: EntityID;
     mode: 'sync' | 'async';
+    scope: 'principal' | 'root';
     relations: {
         parental: Parental;
     };
@@ -135,6 +136,13 @@ export interface CreateTaskRunResult extends BaseResult {
     tasksCreated: number;
     tasksFailed: number;
 }
+/** Result when on:run,do:create rolls back due to task-create failures */
+export interface CreateTaskRunRollbackResult extends BaseResult {
+    ok: false;
+    why: 'task-create-failed';
+    tasksCreated: 0;
+    tasksFailed: number;
+}
 /** Result for on:task,do:execute message */
 export interface TaskExecuteResult extends BaseResult {
     ok: true;
@@ -180,7 +188,7 @@ export interface TaskDispatch {
 }
 export type MsgFindDepsFn = (msg: FindDepsInput) => Promise<FindDepsResult>;
 export type MsgFindChildrenFn = (msg: FindChildrenInput) => Promise<FindChildrenResult>;
-export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult>;
+export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult | CreateTaskRunRollbackResult>;
 export type MsgTaskExecuteFn = (msg: TaskExecuteInput) => Promise<TaskExecuteResult>;
 export type MsgDispatchFn = (msg: DispatchInput) => Promise<DispatchResult>;
 export type MsgRunStartFn = (msg: RunStartInput) => Promise<RunStartResult | InvalidResult>;
