@@ -7,7 +7,7 @@ import Seneca from 'seneca'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './support'
+import { makeSeneca, sleep } from './utils'
 
 describe('Traverse: find:deps', () => {
   test('find-deps', async () => {

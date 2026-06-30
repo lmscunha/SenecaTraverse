@@ -7,7 +7,7 @@ import Seneca from 'seneca'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './support'
+import { makeSeneca, sleep } from './utils'
 
 describe('Traverse: execute task', () => {
   test('execute-task', async () => {
