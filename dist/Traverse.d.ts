@@ -1,16 +1,5 @@
-type EntityID = string;
-type ParentChildRelation = [EntityID, EntityID];
-type Parental = ParentChildRelation[];
-type TraverseOptionsFull = {
-    debug: boolean;
-    rootExecute: boolean;
-    rootEntity: EntityID;
-    relations: {
-        parental: Parental;
-    };
-    customRef: Record<EntityID, string>;
-};
-export type TraverseOptions = Partial<TraverseOptionsFull>;
-declare function Traverse(this: any, options: TraverseOptionsFull): void;
-export default Traverse;
+import type { TraversePlugin } from './types';
+export type { TraverseOptions } from './types';
+declare const _default: TraversePlugin;
+export default _default;
 //# sourceMappingURL=Traverse.d.ts.map

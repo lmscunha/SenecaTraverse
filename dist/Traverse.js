@@ -1,5 +1,5 @@
 "use strict";
-/* Copyright © 2025 Seneca Project Contributors, MIT License. */
+/* Copyright © 2026 Seneca Project Contributors, MIT License. */
 Object.defineProperty(exports, "__esModule", { value: true });
 const gubu_1 = require("gubu");
 function Traverse(options) {
@@ -7,7 +7,16 @@ function Traverse(options) {
     // A Run process can have multiple tasks as children.
     // Thus, this plugin automatically maps these relations for the client.
     options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
-    options.relations.parental.push(['sys/traverse', 'sys/traversetask']);
+    // Build a new array instead of pushing in place: the incoming options may
+    // share the defaults' `parental` reference, and mutating it would leak the
+    // injected relation across plugin loads (accumulating duplicates).
+    options.relations = {
+        ...options.relations,
+        parental: [
+            ...options.relations.parental,
+            ['sys/traverse', 'sys/traversetask'],
+        ],
+    };
     seneca
         .fix('sys:traverse')
         .message('find:deps', {
@@ -36,7 +45,6 @@ function Traverse(options) {
     // In breadth-first order, sorting first by level,
     // then alphabetically in each level.
     async function msgFindDeps(msg) {
-        // const seneca = this
         const allRelations = options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const deps = [];
@@ -181,13 +189,12 @@ function Traverse(options) {
             const childrenData = childIdx === -1
                 ? { child_canon: rootEntity, child_id: rootEntityId }
                 : findChildrenRes.children[childIdx];
-            // TODO: add proper logging and retry
-            console.error('task create failed for child_canon: ' +
-                childrenData.child_canon +
-                ' - child_id: ' +
-                childrenData.child_id +
-                ' - error: ' +
-                taskCreation.reason);
+            // TODO: add retry
+            seneca.log.error('task-create-failed', {
+                child_canon: childrenData?.child_canon,
+                child_id: childrenData?.child_id,
+                err: taskCreation.reason,
+            });
             childIdx++;
         }
         run.total_tasks = taskSuccessCount;
@@ -290,7 +297,9 @@ function Traverse(options) {
                 task,
             });
         }
-        if (run?.status !== 'stopped') {
+        // `run` may be null here if the parent entity was removed mid-traversal
+        // (the reload above exists precisely to detect concurrent changes).
+        if (run && run.status !== 'stopped') {
             run.completed_at = Date.now();
             run.status = 'completed';
             await run.save$();
