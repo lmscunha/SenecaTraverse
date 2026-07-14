@@ -1,6 +1,6 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
-import { Optional, Exact, Default } from 'gubu'
+import { Shape, Exact } from 'shape'
 
 import type {
   // Base Types
@@ -43,8 +43,20 @@ import type {
 
 export type { TraverseOptions } from './types'
 
+// `shape` (formerly `gubu`) builder nodes differ from the gubu bundled inside
+// seneca, so they can't be embedded in `plugin.defaults` or `.message()` arg
+// schemas — those are validated by seneca's own bundled gubu. Use shape only
+// for standalone option validation, and seneca.util.Gubu for message schemas.
+const validateMode = Shape(Exact('sync', 'async'))
+
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
+  const { Optional } = seneca.util.Gubu
+
+  // seneca merges `defaults` (mode: 'sync') before calling the plugin, so
+  // options.mode is always set here; reject anything outside the enum.
+  validateMode(options.mode)
+
   // A Run process can have multiple tasks as children.
   // Thus, this plugin automatically maps these relations for the client.
   options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
@@ -534,7 +546,7 @@ const defaults: TraverseOptionsFull = {
   debug: false,
   rootExecute: true,
   rootEntity: 'sys/user',
-  mode: Default('sync', Exact('sync', 'async')) as unknown as 'sync' | 'async',
+  mode: 'sync',
   relations: {
     parental: [],
   },
