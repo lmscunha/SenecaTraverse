@@ -427,10 +427,10 @@ const utils_1 = require("./utils");
             .message('aim:task,async:test', async function (msg) {
             await (0, utils_1.sleep)(50);
             executionCount++;
-            const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            // Host signals completion once the task's work is done.
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: msg.task.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -456,6 +456,79 @@ const utils_1 = require("./utils");
         // wait for tasks to complete in background
         await (0, utils_1.sleep)(200);
         (0, code_1.expect)(executionCount).equal(3); // root + 2 children
+        // completion barrier: run finishes once every task reports done
+        const finalRun = await seneca.entity('sys/traverse').load$(runEnt.id);
+        (0, code_1.expect)(finalRun.status).equal('completed');
+        (0, code_1.expect)(finalRun.completed_at).exist();
+    });
+    (0, node_test_1.test)('async-mode-completes-only-after-all-tasks-done', async () => {
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            mode: 'async',
+            relations: {
+                parental: [['foo/c0', 'foo/c1']],
+            },
+        })
+            .message('aim:task,barrier:test', async function () {
+            // Host drives completion explicitly, task-by-task.
+            return { ok: true };
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/c0';
+        await seneca.entity('foo/c1').save$({ c0_id: rootEntityId });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId,
+            taskMsg: 'aim:task,barrier:test',
+        });
+        const runId = createRes.run.id;
+        await seneca.post('sys:traverse,on:run,do:start', { runId });
+        const tasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: runId });
+        (0, code_1.expect)(tasks.length).equal(2); // root + 1 child
+        // Complete the first task — run must stay active.
+        const firstRes = await seneca.post('sys:traverse,on:task,do:complete', {
+            taskId: tasks[0].id,
+        });
+        (0, code_1.expect)(firstRes.ok).equal(true);
+        (0, code_1.expect)(firstRes.run.status).equal('active');
+        (0, code_1.expect)(firstRes.doneTasks).equal(1);
+        (0, code_1.expect)(firstRes.totalTasks).equal(2);
+        // Complete the last task — run advances to completed.
+        const lastRes = await seneca.post('sys:traverse,on:task,do:complete', {
+            taskId: tasks[1].id,
+        });
+        (0, code_1.expect)(lastRes.run.status).equal('completed');
+        (0, code_1.expect)(lastRes.doneTasks).equal(2);
+    });
+    (0, node_test_1.test)('async-mode-empty-run-completes-immediately', async () => {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
+            mode: 'async',
+            rootExecute: false,
+            relations: { parental: [] },
+        });
+        await seneca.ready();
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity: 'foo/d0',
+            rootEntityId: '123',
+            taskMsg: 'aim:task,noop:test',
+        });
+        (0, code_1.expect)(createRes.run.total_tasks).equal(0);
+        const startRes = await seneca.post('sys:traverse,on:run,do:start', {
+            runId: createRes.run.id,
+        });
+        (0, code_1.expect)(startRes.run.status).equal('completed');
+    });
+    (0, node_test_1.test)('async-mode-complete-unknown-task', async () => {
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default, { mode: 'async' });
+        await seneca.ready();
+        const res = await seneca.post('sys:traverse,on:task,do:complete', {
+            taskId: 'does-not-exist',
+        });
+        (0, code_1.expect)(res.ok).equal(false);
+        (0, code_1.expect)(res.why).equal('task-not-found');
     });
     (0, node_test_1.test)('async-mode-dispatch-pin-override', async () => {
         const dispatched = [];

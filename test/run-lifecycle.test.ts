@@ -549,10 +549,10 @@ describe('Traverse: run lifecycle', () => {
       .message('aim:task,async:test', async function (this: any, msg: any) {
         await sleep(50)
         executionCount++
-        const taskEnt = msg.task
-        taskEnt.status = 'done'
-        taskEnt.done_at = Date.now()
-        await taskEnt.save$()
+        // Host signals completion once the task's work is done.
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: msg.task.id,
+        })
         return { ok: true }
       })
 
@@ -586,6 +586,94 @@ describe('Traverse: run lifecycle', () => {
     // wait for tasks to complete in background
     await sleep(200)
     expect(executionCount).equal(3) // root + 2 children
+
+    // completion barrier: run finishes once every task reports done
+    const finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
+    expect(finalRun.status).equal('completed')
+    expect(finalRun.completed_at).exist()
+  })
+
+  test('async-mode-completes-only-after-all-tasks-done', async () => {
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        relations: {
+          parental: [['foo/c0', 'foo/c1']],
+        },
+      })
+      .message('aim:task,barrier:test', async function () {
+        // Host drives completion explicitly, task-by-task.
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/c0'
+
+    await seneca.entity('foo/c1').save$({ c0_id: rootEntityId })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,barrier:test',
+    })
+    const runId = createRes.run.id
+
+    await seneca.post('sys:traverse,on:run,do:start', { runId })
+
+    const tasks = await seneca
+      .entity('sys/traversetask')
+      .list$({ run_id: runId })
+    expect(tasks.length).equal(2) // root + 1 child
+
+    // Complete the first task — run must stay active.
+    const firstRes = await seneca.post('sys:traverse,on:task,do:complete', {
+      taskId: tasks[0].id,
+    })
+    expect(firstRes.ok).equal(true)
+    expect(firstRes.run.status).equal('active')
+    expect(firstRes.doneTasks).equal(1)
+    expect(firstRes.totalTasks).equal(2)
+
+    // Complete the last task — run advances to completed.
+    const lastRes = await seneca.post('sys:traverse,on:task,do:complete', {
+      taskId: tasks[1].id,
+    })
+    expect(lastRes.run.status).equal('completed')
+    expect(lastRes.doneTasks).equal(2)
+  })
+
+  test('async-mode-empty-run-completes-immediately', async () => {
+    const seneca = makeSeneca().use(Traverse, {
+      mode: 'async',
+      rootExecute: false,
+      relations: { parental: [] },
+    })
+    await seneca.ready()
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity: 'foo/d0',
+      rootEntityId: '123',
+      taskMsg: 'aim:task,noop:test',
+    })
+    expect(createRes.run.total_tasks).equal(0)
+
+    const startRes = await seneca.post('sys:traverse,on:run,do:start', {
+      runId: createRes.run.id,
+    })
+    expect(startRes.run.status).equal('completed')
+  })
+
+  test('async-mode-complete-unknown-task', async () => {
+    const seneca = makeSeneca().use(Traverse, { mode: 'async' })
+    await seneca.ready()
+
+    const res = await seneca.post('sys:traverse,on:task,do:complete', {
+      taskId: 'does-not-exist',
+    })
+    expect(res.ok).equal(false)
+    expect(res.why).equal('task-not-found')
   })
 
   test('async-mode-dispatch-pin-override', async () => {

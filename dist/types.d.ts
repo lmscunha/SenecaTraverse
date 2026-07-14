@@ -92,6 +92,10 @@ export interface RunStartInput {
 export interface RunStopInput {
     runId: string;
 }
+/** Input for on:task,do:complete message */
+export interface TaskCompleteInput {
+    taskId: string;
+}
 /** Base result type */
 export interface BaseResult {
     ok: boolean;
@@ -137,6 +141,13 @@ export interface RunStopResult extends BaseResult {
     ok: true;
     run: RunEntity;
 }
+/** Result for on:task,do:complete message */
+export interface TaskCompleteResult extends BaseResult {
+    ok: true;
+    run: RunEntity;
+    doneTasks: number;
+    totalTasks: number;
+}
 export type MsgFindDepsFn = (msg: FindDepsInput) => Promise<FindDepsResult>;
 export type MsgFindChildrenFn = (msg: FindChildrenInput) => Promise<FindChildrenResult>;
 export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult>;
@@ -144,6 +155,7 @@ export type MsgTaskExecuteFn = (msg: TaskExecuteInput) => Promise<TaskExecuteRes
 export type MsgDispatchFn = (msg: DispatchInput) => Promise<DispatchResult>;
 export type MsgRunStartFn = (msg: RunStartInput) => Promise<RunStartResult | InvalidResult>;
 export type MsgRunStopFn = (msg: RunStopInput) => Promise<RunStopResult | InvalidResult>;
+export type MsgTaskCompleteFn = (msg: TaskCompleteInput) => Promise<TaskCompleteResult | InvalidResult>;
 /** Traverse plugin function */
 export interface TraversePlugin {
     (this: Seneca, options: TraverseOptionsFull): void;
