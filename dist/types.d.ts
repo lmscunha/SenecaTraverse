@@ -137,10 +137,6 @@ export interface RunStopResult extends BaseResult {
     ok: true;
     run: RunEntity;
 }
-/** Dispatch argument forwarded to a task's target message. */
-export interface TaskDispatch {
-    task: TaskEntity;
-}
 export type MsgFindDepsFn = (msg: FindDepsInput) => Promise<FindDepsResult>;
 export type MsgFindChildrenFn = (msg: FindChildrenInput) => Promise<FindChildrenResult>;
 export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult>;

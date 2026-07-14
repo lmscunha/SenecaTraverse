@@ -241,14 +241,20 @@ function Traverse(options) {
         });
         const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
-            for (const taskSpec of runTasksSpec) {
-                const task = await seneca
-                    .entity('sys/traversetask')
-                    .load$(taskSpec.child_id);
+            const tasks = await Promise.all(runTasksSpec.map((taskSpec) => seneca.entity('sys/traversetask').load$(taskSpec.child_id)));
+            for (const task of tasks) {
                 if (!task || task.status === 'done' || task.status === 'dispatched') {
                     continue;
                 }
-                seneca.post('sys:traverse,on:task,do:execute', { task });
+                // Fire-and-forget: async mode returns without awaiting task
+                // completion. A rejected dispatch must not become an unhandled
+                // rejection or abort the fan-out of remaining tasks.
+                seneca
+                    .post('sys:traverse,on:task,do:execute', { task })
+                    .catch((err) => seneca.log.error('async-dispatch-failed', {
+                    task_id: task.id,
+                    err,
+                }));
             }
             return { ok: true, run };
         }
@@ -329,7 +335,7 @@ const defaults = {
     debug: false,
     rootExecute: true,
     rootEntity: 'sys/user',
-    mode: 'sync',
+    mode: (0, gubu_1.Default)('sync', (0, gubu_1.Exact)('sync', 'async')),
     relations: {
         parental: [],
     },

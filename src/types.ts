@@ -187,15 +187,6 @@ export interface RunStopResult extends BaseResult {
 }
 
 // ============================================================================
-// Internal/Helper Types
-// ============================================================================
-
-/** Dispatch argument forwarded to a task's target message. */
-export interface TaskDispatch {
-  task: TaskEntity
-}
-
-// ============================================================================
 // Message Handler Types
 // ============================================================================
 
