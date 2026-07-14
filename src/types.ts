@@ -128,6 +128,11 @@ export interface RunStopInput {
   runId: string
 }
 
+/** Input for on:task,do:complete message */
+export interface TaskCompleteInput {
+  taskId: string
+}
+
 // ============================================================================
 // Message Output Types
 // ============================================================================
@@ -186,6 +191,14 @@ export interface RunStopResult extends BaseResult {
   run: RunEntity
 }
 
+/** Result for on:task,do:complete message */
+export interface TaskCompleteResult extends BaseResult {
+  ok: true
+  run: RunEntity
+  doneTasks: number
+  totalTasks: number
+}
+
 // ============================================================================
 // Message Handler Types
 // ============================================================================
@@ -207,6 +220,9 @@ export type MsgRunStartFn = (
 export type MsgRunStopFn = (
   msg: RunStopInput,
 ) => Promise<RunStopResult | InvalidResult>
+export type MsgTaskCompleteFn = (
+  msg: TaskCompleteInput,
+) => Promise<TaskCompleteResult | InvalidResult>
 
 // ============================================================================
 // Plugin Export Type

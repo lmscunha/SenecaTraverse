@@ -51,7 +51,10 @@ function Traverse(options) {
     }, msgRunStart)
         .message('on:run,do:stop', {
         runId: String,
-    }, msgRunStop);
+    }, msgRunStop)
+        .message('on:task,do:complete', {
+        taskId: String,
+    }, msgTaskComplete);
     // Returns a sorted list of entity pairs
     // starting from a given entity.
     // In breadth-first order, sorting first by level,
@@ -250,6 +253,14 @@ function Traverse(options) {
         });
         const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
+            // No tasks to dispatch: the completion barrier would never fire, so
+            // complete the run here (mirrors the sync empty-run path).
+            if (run.total_tasks === 0) {
+                run.status = 'completed';
+                run.completed_at = Date.now();
+                await run.save$();
+                return { ok: true, run };
+            }
             const tasks = await Promise.all(runTasksSpec.map((taskSpec) => seneca.entity('sys/traversetask').load$(taskSpec.child_id)));
             for (const task of tasks) {
                 if (!task || task.status === 'done' || task.status === 'dispatched') {
@@ -289,6 +300,45 @@ function Traverse(options) {
         const task = msg.task;
         await seneca.post(task.task_msg, { task });
         return { ok: true };
+    }
+    // Completion barrier for async runs: the host signals a finished task, and
+    // the run is marked completed once every task has reported done. In sync
+    // mode the in-process loop already owns completion (see processRunTasks).
+    async function msgTaskComplete(msg) {
+        const task = await seneca
+            .entity('sys/traversetask')
+            .load$(msg.taskId);
+        if (!task) {
+            return { ok: false, why: 'task-not-found' };
+        }
+        if (task.status !== 'done') {
+            task.status = 'done';
+            task.done_at = Date.now();
+            await task.save$();
+        }
+        const run = await seneca
+            .entity('sys/traverse')
+            .load$(task.run_id);
+        if (!run?.status) {
+            return { ok: false, why: 'run-entity-not-found' };
+        }
+        const doneTasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: run.id, status: 'done', fields$: ['id'] });
+        // A stopped run stays stopped; only an active run advances to completed,
+        // and only when every counted task has reported done.
+        if (run.status === 'active' &&
+            doneTasks.length >= run.total_tasks) {
+            run.status = 'completed';
+            run.completed_at = Date.now();
+            await run.save$();
+        }
+        return {
+            ok: true,
+            run,
+            doneTasks: doneTasks.length,
+            totalTasks: run.total_tasks,
+        };
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
