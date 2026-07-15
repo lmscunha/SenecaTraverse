@@ -608,6 +608,16 @@ describe('Traverse: run lifecycle', () => {
 
     await seneca.ready()
 
+    // Override dispatch so it does NOT auto-complete: the host (this test)
+    // signals each task's completion by hand, exercising the barrier gate.
+    seneca.message(
+      'sys:traverse,do:dispatch,on:task',
+      async function (this: any, msg: any) {
+        await this.post(msg.task.task_msg, { task: msg.task })
+        return { ok: true }
+      },
+    )
+
     const rootEntityId = '123'
     const rootEntity = 'foo/c0'
 
@@ -632,16 +642,15 @@ describe('Traverse: run lifecycle', () => {
       taskId: tasks[0].id,
     })
     expect(firstRes.ok).equal(true)
-    expect(firstRes.run.status).equal('active')
-    expect(firstRes.doneTasks).equal(1)
-    expect(firstRes.totalTasks).equal(2)
+    const afterFirst = await seneca.entity('sys/traverse').load$(runId)
+    expect(afterFirst.status).equal('active')
 
     // Complete the last task — run advances to completed.
-    const lastRes = await seneca.post('sys:traverse,on:task,do:complete', {
+    await seneca.post('sys:traverse,on:task,do:complete', {
       taskId: tasks[1].id,
     })
-    expect(lastRes.run.status).equal('completed')
-    expect(lastRes.doneTasks).equal(2)
+    const afterLast = await seneca.entity('sys/traverse').load$(runId)
+    expect(afterLast.status).equal('completed')
   })
 
   test('async-mode-empty-run-completes-immediately', async () => {
@@ -669,11 +678,13 @@ describe('Traverse: run lifecycle', () => {
     const seneca = makeSeneca().use(Traverse, { mode: 'async' })
     await seneca.ready()
 
+    // Idempotent: a completion for a missing task is a no-op ok — an
+    // at-least-once transport may redeliver after cleanup, and that must not
+    // become a poison message.
     const res = await seneca.post('sys:traverse,on:task,do:complete', {
       taskId: 'does-not-exist',
     })
-    expect(res.ok).equal(false)
-    expect(res.why).equal('task-not-found')
+    expect(res.ok).equal(true)
   })
 
   test('async-mode-dispatch-pin-override', async () => {

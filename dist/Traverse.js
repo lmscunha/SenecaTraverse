@@ -54,7 +54,9 @@ function Traverse(options) {
     }, msgRunStop)
         .message('on:task,do:complete', {
         taskId: String,
-    }, msgTaskComplete);
+    }, msgTaskComplete)
+        .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
+        .message('on:run,do:claim', { run: Object }, msgRunClaim);
     // Returns a sorted list of entity pairs
     // starting from a given entity.
     // In breadth-first order, sorting first by level,
@@ -253,14 +255,6 @@ function Traverse(options) {
         });
         const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
-            // No tasks to dispatch: the completion barrier would never fire, so
-            // complete the run here (mirrors the sync empty-run path).
-            if (run.total_tasks === 0) {
-                run.status = 'completed';
-                run.completed_at = Date.now();
-                await run.save$();
-                return { ok: true, run };
-            }
             const tasks = await Promise.all(runTasksSpec.map((taskSpec) => seneca.entity('sys/traversetask').load$(taskSpec.child_id)));
             for (const task of tasks) {
                 if (!task || task.status === 'done' || task.status === 'dispatched') {
@@ -276,7 +270,17 @@ function Traverse(options) {
                     err,
                 }));
             }
-            return { ok: true, run };
+            // Nothing was dispatched (zero tasks, or all already done on a restart):
+            // the fan-out never routes through the barrier, so complete here — this
+            // also emits did:complete for empty runs. In-flight dispatches are not
+            // yet done, so a live run is not falsely completed.
+            await checkAndCompleteRun(run.id);
+            // Reload so the returned run reflects a same-tick completion (empty run);
+            // a run with pending tasks stays 'active' here and completes later.
+            const startedRun = await seneca
+                .entity('sys/traverse')
+                .load$(run.id);
+            return { ok: true, run: startedRun };
         }
         processRunTasks(run, runTasksSpec);
         return { ok: true, run };
@@ -299,46 +303,83 @@ function Traverse(options) {
     async function msgDispatch(msg) {
         const task = msg.task;
         await seneca.post(task.task_msg, { task });
+        // Default in-process dispatch owns completion: signal the barrier once the
+        // task's message returns. Hosts that override this pin to route to an
+        // external transport (e.g. SQS) must have their remote worker call
+        // on:task,do:complete instead — that is the single completion path.
+        await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id });
         return { ok: true };
     }
-    // Completion barrier for async runs: the host signals a finished task, and
-    // the run is marked completed once every task has reported done. In sync
-    // mode the in-process loop already owns completion (see processRunTasks).
+    // Completion barrier — the single path both sync and async runs travel to
+    // completion. The host (or the default dispatch) signals a finished task,
+    // storing optional result/fragment; the run advances to completed once every
+    // task has reported done (via the overridable claim pin). Idempotent: a
+    // missing task returns ok — an at-least-once transport may redeliver a
+    // completion after cleanup, and that must not become a poison message.
     async function msgTaskComplete(msg) {
         const task = await seneca
             .entity('sys/traversetask')
             .load$(msg.taskId);
         if (!task) {
-            return { ok: false, why: 'task-not-found' };
+            return { ok: true };
         }
         if (task.status !== 'done') {
             task.status = 'done';
             task.done_at = Date.now();
+            if (msg.result !== undefined)
+                task.result = msg.result;
+            if (msg.fragment !== undefined)
+                task.fragment = msg.fragment;
             await task.save$();
         }
+        await checkAndCompleteRun(task.run_id);
+        return { ok: true };
+    }
+    // Overridable hook fired exactly once per run, when it reaches completed.
+    // Default is a no-op; hosts override to trigger downstream work (e.g. post an
+    // SQS message to assemble the run's collected fragments).
+    async function msgRunDidComplete(_msg) {
+        return { ok: true };
+    }
+    // Default completion claim: best-effort load-count-set. Transitions an active
+    // run to `completed` only when all its tasks are done, and reports whether
+    // THIS call won the transition. Concentrating the check-and-set in one
+    // overridable pin lets hosts with concurrent distributed workers swap in a
+    // store-level conditional write (e.g. DynamoDB attribute_not_exists) so the
+    // claim is atomic and did:complete fires exactly once. Counts by id only to
+    // keep the scan light on large runs.
+    async function msgRunClaim(msg) {
         const run = await seneca
             .entity('sys/traverse')
-            .load$(task.run_id);
-        if (!run?.status) {
-            return { ok: false, why: 'run-entity-not-found' };
+            .load$(msg.run.id);
+        if (!run || run.status !== 'active') {
+            return { ok: true, claimed: false, run };
         }
         const doneTasks = await seneca
             .entity('sys/traversetask')
             .list$({ run_id: run.id, status: 'done', fields$: ['id'] });
-        // A stopped run stays stopped; only an active run advances to completed,
-        // and only when every counted task has reported done.
-        if (run.status === 'active' &&
-            doneTasks.length >= run.total_tasks) {
-            run.status = 'completed';
-            run.completed_at = Date.now();
-            await run.save$();
+        if (doneTasks.length < run.total_tasks) {
+            return { ok: true, claimed: false, run };
         }
-        return {
-            ok: true,
-            run,
-            doneTasks: doneTasks.length,
-            totalTasks: run.total_tasks,
-        };
+        run.status = 'completed';
+        run.completed_at = Date.now();
+        await run.save$();
+        return { ok: true, claimed: true, run };
+    }
+    // Attempt to complete a run through the (overridable) claim pin, emitting
+    // did:complete only for the caller that wins the claim — so the hook fires
+    // exactly once per run regardless of how many tasks report done concurrently.
+    async function checkAndCompleteRun(runId) {
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run || run.status !== 'active') {
+            return;
+        }
+        const claimRes = await seneca.post('sys:traverse,on:run,do:claim', { run });
+        if (claimRes.claimed) {
+            await seneca.post('sys:traverse,on:run,did:complete', {
+                run: claimRes.run,
+            });
+        }
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||
@@ -351,13 +392,11 @@ function Traverse(options) {
             : entityId.slice(canonSeparatorIdx + 1);
     }
     async function processRunTasks(runEnt, tasks) {
-        let run = runEnt;
         if (tasks.length === 0) {
-            run.status = 'completed';
-            run.completed_at = Date.now();
-            await run.save$();
+            await checkAndCompleteRun(runEnt.id);
             return;
         }
+        let run = runEnt;
         for (const taskToProcess of tasks) {
             run = await seneca
                 .entity(taskToProcess.parent_canon)
@@ -375,17 +414,15 @@ function Traverse(options) {
             if (!canProcessNextTask) {
                 continue;
             }
+            // do:execute → do:dispatch → (default) do:complete, so each task drives
+            // itself through the barrier; the last one completes the run.
             await seneca.post('sys:traverse,on:task,do:execute', {
                 task,
             });
         }
-        // `run` may be null here if the parent entity was removed mid-traversal
-        // (the reload above exists precisely to detect concurrent changes).
-        if (run && run.status !== 'stopped') {
-            run.completed_at = Date.now();
-            run.status = 'completed';
-            await run.save$();
-        }
+        // Safety net: covers restarts where every task was already done and skipped
+        // the dispatch path, so no do:complete ran in the loop body.
+        await checkAndCompleteRun(runEnt.id);
     }
 }
 // Default options.

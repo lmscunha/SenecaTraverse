@@ -474,6 +474,12 @@ const utils_1 = require("./utils");
             return { ok: true };
         });
         await seneca.ready();
+        // Override dispatch so it does NOT auto-complete: the host (this test)
+        // signals each task's completion by hand, exercising the barrier gate.
+        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+            await this.post(msg.task.task_msg, { task: msg.task });
+            return { ok: true };
+        });
         const rootEntityId = '123';
         const rootEntity = 'foo/c0';
         await seneca.entity('foo/c1').save$({ c0_id: rootEntityId });
@@ -493,15 +499,14 @@ const utils_1 = require("./utils");
             taskId: tasks[0].id,
         });
         (0, code_1.expect)(firstRes.ok).equal(true);
-        (0, code_1.expect)(firstRes.run.status).equal('active');
-        (0, code_1.expect)(firstRes.doneTasks).equal(1);
-        (0, code_1.expect)(firstRes.totalTasks).equal(2);
+        const afterFirst = await seneca.entity('sys/traverse').load$(runId);
+        (0, code_1.expect)(afterFirst.status).equal('active');
         // Complete the last task — run advances to completed.
-        const lastRes = await seneca.post('sys:traverse,on:task,do:complete', {
+        await seneca.post('sys:traverse,on:task,do:complete', {
             taskId: tasks[1].id,
         });
-        (0, code_1.expect)(lastRes.run.status).equal('completed');
-        (0, code_1.expect)(lastRes.doneTasks).equal(2);
+        const afterLast = await seneca.entity('sys/traverse').load$(runId);
+        (0, code_1.expect)(afterLast.status).equal('completed');
     });
     (0, node_test_1.test)('async-mode-empty-run-completes-immediately', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
@@ -524,11 +529,13 @@ const utils_1 = require("./utils");
     (0, node_test_1.test)('async-mode-complete-unknown-task', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, { mode: 'async' });
         await seneca.ready();
+        // Idempotent: a completion for a missing task is a no-op ok — an
+        // at-least-once transport may redeliver after cleanup, and that must not
+        // become a poison message.
         const res = await seneca.post('sys:traverse,on:task,do:complete', {
             taskId: 'does-not-exist',
         });
-        (0, code_1.expect)(res.ok).equal(false);
-        (0, code_1.expect)(res.why).equal('task-not-found');
+        (0, code_1.expect)(res.ok).equal(true);
     });
     (0, node_test_1.test)('async-mode-dispatch-pin-override', async () => {
         const dispatched = [];
