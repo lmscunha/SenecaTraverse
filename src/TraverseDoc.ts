@@ -15,10 +15,10 @@ const docs = {
       desc: 'Execute a single Run task.',
     },
     msgDispatch: {
-      desc: 'Default dispatch: calls the task_msg then marks the task complete. Override sys:traverse,do:dispatch,on:task to replace with async transport (e.g. SQS). The override must call sys:traverse,on:task,do:complete itself.',
+      desc: 'The dispatch abstraction. In sync mode the default calls task_msg then marks the task complete, in-invocation. In async mode the default hands the task to the event loop and returns immediately (non-blocking); the task completes out-of-band via the barrier. Override sys:traverse,do:dispatch,on:task to hand off to a durable transport (e.g. SQS); the override must return once the payload is ENQUEUED (not completed) and have its remote worker call sys:traverse,on:task,do:complete.',
     },
     msgRunStart: {
-      desc: 'Start a Run process execution, dispatching the next pending child task.',
+      desc: 'Start a Run process execution, dispatching its pending tasks in dependency order (option order: topological = parents-first for create/read; reverse = children-first for delete/teardown). In async mode each task is dispatched sequentially and only the HANDOFF is awaited (enqueue/schedule), so the run returns once every task is handed off — completion arrives out-of-band via the barrier. In sync mode each task runs to completion in-invocation, in the same order.',
     },
     msgRunStop: {
       desc: 'Stop a Run process execution, preventing the dispatching of the next pending child task.',

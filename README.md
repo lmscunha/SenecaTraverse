@@ -25,7 +25,8 @@ $ npm install @seneca/traverse
 ```js
 seneca.use('Traverse', {
   rootEntity: 'sys/user',
-  mode: 'async',          // fire-and-forget dispatch
+  mode: 'async',          // dispatch to a transport; completion is out-of-band
+  order: 'topological',   // parents-first (use 'reverse' for delete/teardown)
   scope: 'root',          // bypass principal-scoping for cross-org runs
   relations: {
     parental: [
@@ -54,7 +55,8 @@ const createRes = await seneca.post('sys:traverse,on:run,do:create', {
 // createRes === { ok: true, run, tasksCreated: N, tasksFailed: 0 }
 
 await seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id })
-// returns immediately in async mode; tasks run in background
+// async: returns once every task is handed off (enqueued/scheduled) in order;
+// completion arrives out-of-band via the barrier
 ```
 
 ## More Examples
@@ -68,7 +70,8 @@ Review the [unit tests](test/) for more examples.
 - `debug` : boolean
 - `rootExecute` : boolean — include root entity as a task (default `true`)
 - `rootEntity` : string — default root entity canon (default `sys/user`)
-- `mode` : `'sync'|'async'` — `sync` awaits each dispatch in sequence; `async` fires all dispatches concurrently and returns before they complete (default `sync`)
+- `mode` : `'sync'|'async'` — `sync` runs each task to completion in sequence, in-invocation; `async` dispatches each task in order awaiting only the handoff (enqueue/schedule) and returns before tasks complete — completion arrives out-of-band via the barrier (default `sync`)
+- `order` : `'topological'|'reverse'` — task dispatch order. `topological` = parents before children (create/read); `reverse` = children before parents (delete/teardown — the FK-safe reverse-topological order) (default `topological`)
 - `scope` : `'principal'|'root'` — entity operations use `seneca` (principal-scoped) or `seneca.root` (root-scoped, bypasses org-principal restrictions) (default `principal`)
 - `relations` : object — `{ parental: [['parent/canon', 'child/canon'], ...] }`
 - `customRef` : object — override the FK field name per child canon, e.g. `{ 'sys/traversetask': 'run_id' }`
@@ -131,10 +134,14 @@ Skips tasks already in `done` or `dispatched` state.
 
 ### &laquo; `sys:traverse,do:dispatch,on:task` &raquo;
 
-**Overridable.** Default: calls the task's `task_msg` then marks it complete via
-`sys:traverse,on:task,do:complete`. Override to push to an async queue (SQS, etc.).
-When overriding, the remote worker **must** call `sys:traverse,on:task,do:complete`
-explicitly — the plugin cannot do it for you.
+**Overridable — the dispatch abstraction.** Mode-aware default: in `sync` mode it
+runs the task's `task_msg` to completion then marks it complete via
+`sys:traverse,on:task,do:complete`, in-invocation; in `async` mode it hands the
+task to the **event loop** and returns immediately (non-blocking), completing
+out-of-band. Override to hand off to a durable transport (SQS, etc.) — the
+override **must** return once the payload is *enqueued* (not once the task
+completes) and its remote worker **must** call `sys:traverse,on:task,do:complete`
+explicitly.
 
 ```js
 // register after seneca.ready()
@@ -152,9 +159,12 @@ seneca.message('sys:traverse,do:dispatch,on:task', async function(msg) {
 
 ### &laquo; `sys:traverse,on:run,do:start` &raquo;
 
-Transition run to `active` and dispatch all pending tasks.
-In `sync` mode tasks run sequentially and the call awaits completion.
-In `async` mode all dispatches fire concurrently and the call returns immediately.
+Transition run to `active` and dispatch its pending tasks in dependency order
+(option `order`: `topological` = parents-first; `reverse` = children-first).
+In `sync` mode tasks run to completion sequentially, in-invocation.
+In `async` mode each task is dispatched sequentially and only the **handoff**
+(enqueue/schedule) is awaited, so the call returns once every task is handed off;
+completion arrives out-of-band via the barrier.
 
 #### Parameters
 
