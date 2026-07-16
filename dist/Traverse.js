@@ -173,6 +173,13 @@ function Traverse(options) {
             rootEntityId,
         });
         const tasksCreationPromises = [];
+        // seq = topological rank. The root is the shallowest node, and
+        // findChildren returns children in breadth-first (parents-before-children)
+        // order, so a running counter over [root, ...children] is a valid
+        // topological ranking. do:start dispatches by this key. Stamped here
+        // because the saves below run concurrently — creation order (t_c) can't be
+        // relied on to reflect the dependency order.
+        let seq = 0;
         if (isRootIncluded) {
             // Process the action on the root data storage,
             // not only on its children.
@@ -184,6 +191,7 @@ function Traverse(options) {
                 child_canon: rootEntity,
                 status: 'pending',
                 task_msg: run.task_msg,
+                seq: seq++,
             }));
         }
         findChildrenRes.children.forEach((child) => {
@@ -195,6 +203,7 @@ function Traverse(options) {
                 child_canon: child.child_canon,
                 status: 'pending',
                 task_msg: run.task_msg,
+                seq: seq++,
             }));
         });
         const tasksCreationRes = await Promise.allSettled(tasksCreationPromises);
@@ -269,19 +278,27 @@ function Traverse(options) {
         const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
             const tasks = await Promise.all(runTasksSpec.map((taskSpec) => se().entity('sys/traversetask').load$(taskSpec.child_id)));
-            for (const task of tasks) {
-                if (!task || task.status === 'done' || task.status === 'dispatched') {
-                    continue;
+            const pending = orderTasks(tasks).filter((task) => task && task.status !== 'done' && task.status !== 'dispatched');
+            // Hand each task to the dispatch abstraction (do:dispatch) in dependency
+            // order, awaiting only the HANDOFF, never task completion — completion
+            // arrives out-of-band via the barrier (on:task,do:complete). The await
+            // matters: the default dispatch hands off to the event loop, and a host
+            // override enqueues to a transport (e.g. SQS); awaiting the handoff means
+            // do:start returns only once every task is scheduled/enqueued, so a host
+            // that freezes between invocations (Lambda) can't drop an un-flushed
+            // enqueue. Dispatch is SEQUENTIAL so the handoff order matches the chosen
+            // topological/reverse order — a parallel fan-out would scramble it. A
+            // rejected handoff is logged and must not abort the remaining tasks.
+            for (const task of pending) {
+                try {
+                    await seneca.post('sys:traverse,on:task,do:execute', { task });
                 }
-                // Fire-and-forget: async mode returns without awaiting task
-                // completion. A rejected dispatch must not become an unhandled
-                // rejection or abort the fan-out of remaining tasks.
-                seneca
-                    .post('sys:traverse,on:task,do:execute', { task })
-                    .catch((err) => seneca.log.error('async-dispatch-failed', {
-                    task_id: task.id,
-                    err,
-                }));
+                catch (err) {
+                    seneca.log.error('async-dispatch-failed', {
+                        task_id: task.id,
+                        err,
+                    });
+                }
             }
             // Nothing was dispatched (zero tasks, or all already done on a restart):
             // the fan-out never routes through the barrier, so complete here — this
@@ -315,13 +332,47 @@ function Traverse(options) {
     }
     async function msgDispatch(msg) {
         const task = msg.task;
+        if (options.mode === 'async') {
+            // Async default: hand the task to the EVENT LOOP and return immediately.
+            // do:start must not block on task completion, so dispatch returns once the
+            // task is scheduled; the task then runs and signals the barrier
+            // out-of-band. Hosts on freeze-prone infra (e.g. Lambda) override this pin
+            // to hand the payload to a durable transport (e.g. SQS) instead of the
+            // local event loop — that override must likewise return once the payload
+            // is ENQUEUED, not once the task completes, and have its remote worker
+            // call on:task,do:complete (the single completion path).
+            void runTaskThenComplete(task);
+            return { ok: true };
+        }
+        // Sync default: run the task to completion in-process before returning, so
+        // processRunTasks advances tasks strictly one after another and surfaces a
+        // task error to the caller.
         await seneca.post(task.task_msg, { task });
-        // Default in-process dispatch owns completion: signal the barrier once the
-        // task's message returns. Hosts that override this pin to route to an
-        // external transport (e.g. SQS) must have their remote worker call
-        // on:task,do:complete instead — that is the single completion path.
         await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id });
         return { ok: true };
+    }
+    // Async local executor: run the task's message then signal the barrier, on
+    // the event loop, never blocking the dispatch that scheduled it. Errors are
+    // logged (the run stays active; the task simply never reports done) rather
+    // than surfaced as an unhandled rejection.
+    async function runTaskThenComplete(task) {
+        try {
+            await seneca.post(task.task_msg, { task });
+            await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id });
+        }
+        catch (err) {
+            seneca.log.error('async-task-failed', { task_id: task.id, err });
+        }
+    }
+    // Order a run's tasks by their topological rank (seq). Ascending =
+    // parents-before-children (create/read); descending = children-before-parents
+    // (delete/teardown). Null loads are dropped.
+    function orderTasks(tasks) {
+        const present = tasks.filter((t) => t != null);
+        const dir = options.order === 'reverse' ? -1 : 1;
+        return present
+            .slice()
+            .sort((a, b) => dir * ((a.seq ?? 0) - (b.seq ?? 0)));
     }
     // Completion barrier — the single path both sync and async runs travel to
     // completion. The host (or the default dispatch) signals a finished task,
@@ -409,16 +460,22 @@ function Traverse(options) {
             await checkAndCompleteRun(runEnt.id);
             return;
         }
+        // Process in dependency order (seq): parents-first for create/read,
+        // children-first for delete — same guarantee as the async path.
+        const loaded = await Promise.all(tasks.map((spec) => se().entity('sys/traversetask').load$(spec.child_id)));
+        const ordered = orderTasks(loaded);
         let run = runEnt;
-        for (const taskToProcess of tasks) {
+        for (const orderedTask of ordered) {
             // Reload the run (not the task's parent entity) to detect concurrent stops.
             run = await se().entity('sys/traverse').load$(runEnt.id);
             if (!run || run.status === 'stopped') {
                 break;
             }
+            // Reload for the latest status (an earlier iteration or a concurrent
+            // process may have advanced it).
             const task = await se()
                 .entity('sys/traversetask')
-                .load$(taskToProcess.child_id);
+                .load$(orderedTask.id);
             if (!task) {
                 continue;
             }
@@ -445,6 +502,7 @@ const defaults = {
     rootEntity: 'sys/user',
     mode: 'sync',
     scope: 'principal',
+    order: 'topological',
     relations: {
         parental: [],
     },

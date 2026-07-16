@@ -533,8 +533,8 @@ describe('Traverse: run lifecycle', () => {
     expect(run.status).equal('completed')
   })
 
-  test('async-mode-returns-before-tasks-complete', async () => {
-    let executionCount = 0
+  test('async-mode-awaits-fan-out-completion-stays-out-of-band', async () => {
+    let completionCount = 0
 
     const seneca = makeSeneca()
       .use(Traverse, {
@@ -546,17 +546,26 @@ describe('Traverse: run lifecycle', () => {
           ],
         },
       })
-      .message('aim:task,async:test', async function (this: any, msg: any) {
-        await sleep(50)
-        executionCount++
-        // Host signals completion once the task's work is done.
-        await this.post('sys:traverse,on:task,do:complete', {
-          taskId: msg.task.id,
-        })
+      .message('aim:task,async:test', async function () {
         return { ok: true }
       })
 
     await seneca.ready()
+
+    // Simulate an async transport (e.g. SQS): dispatch hands the task off and
+    // returns immediately; completion arrives out-of-band on a later tick. This
+    // is what do:start must AWAIT — the handoff, not the completion.
+    seneca.message(
+      'sys:traverse,do:dispatch,on:task',
+      async function (this: any, msg: any) {
+        const taskId = msg.task.id
+        setTimeout(() => {
+          completionCount++
+          this.post('sys:traverse,on:task,do:complete', { taskId })
+        }, 50)
+        return { ok: true }
+      },
+    )
 
     const rootEntityId = '123'
     const rootEntity = 'foo/a0'
@@ -572,25 +581,185 @@ describe('Traverse: run lifecycle', () => {
 
     const runEnt = createRes.run
 
-    const startedAt = Date.now()
     const startRes = await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
-    const elapsed = Date.now() - startedAt
 
     expect(startRes.ok).equal(true)
-    // returned before the 50 ms task delay — not awaiting tasks
-    expect(elapsed).lessThan(40)
-    expect(executionCount).equal(0)
+    // do:start awaited the fan-out: every task handed off (dispatched) before
+    // return — no dangling promise that a host freeze could drop.
+    const afterStart = await seneca.entity('sys/traversetask').list$({
+      run_id: runEnt.id,
+    })
+    expect(afterStart.length).equal(3) // root + 2 children
+    afterStart.forEach((task: any) => expect(task.status).equal('dispatched'))
+    // completion is out-of-band, so none have fired yet and the run is active
+    expect(completionCount).equal(0)
+    expect(startRes.run.status).equal('active')
 
-    // wait for tasks to complete in background
+    // wait for out-of-band completions
     await sleep(200)
-    expect(executionCount).equal(3) // root + 2 children
+    expect(completionCount).equal(3)
 
     // completion barrier: run finishes once every task reports done
     const finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
     expect(finalRun.status).equal('completed')
     expect(finalRun.completed_at).exist()
+  })
+
+  test('async-mode-default-dispatch-uses-event-loop', async () => {
+    // No do:dispatch override → the default async dispatch hands each task to
+    // the event loop and returns immediately, so do:start does NOT block on
+    // task work; the tasks complete out-of-band and drive the run to done.
+    let executionCount = 0
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        rootExecute: false,
+        relations: {
+          parental: [['foo/f0', 'foo/f1']],
+        },
+      })
+      .message('aim:task,eventloop:test', async function () {
+        await sleep(50)
+        executionCount++
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/f0'
+
+    await seneca.entity('foo/f1').save$({ f0_id: rootEntityId })
+    await seneca.entity('foo/f1').save$({ f0_id: rootEntityId })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,eventloop:test',
+    })
+
+    const startedAt = Date.now()
+    await seneca.post('sys:traverse,on:run,do:start', {
+      runId: createRes.run.id,
+    })
+    const elapsed = Date.now() - startedAt
+
+    // returned before the 50 ms task work — do:start awaited only the handoff
+    expect(elapsed).lessThan(40)
+    expect(executionCount).equal(0)
+
+    await sleep(200)
+    expect(executionCount).equal(2)
+
+    const finalRun = await seneca
+      .entity('sys/traverse')
+      .load$(createRes.run.id)
+    expect(finalRun.status).equal('completed')
+  })
+
+  test('async-mode-dispatches-parents-before-children-topological', async () => {
+    const dispatchOrder: string[] = []
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        // default order: 'topological'
+        relations: {
+          parental: [
+            ['foo/g0', 'foo/g1'],
+            ['foo/g1', 'foo/g2'],
+          ],
+        },
+      })
+      .message('aim:task,order:test', async function () {
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    seneca.message(
+      'sys:traverse,do:dispatch,on:task',
+      async function (this: any, msg: any) {
+        dispatchOrder.push(msg.task.child_canon)
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: msg.task.id,
+        })
+        return { ok: true }
+      },
+    )
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/g0'
+
+    const g1 = await seneca.entity('foo/g1').save$({ g0_id: rootEntityId })
+    await seneca.entity('foo/g2').save$({ g1_id: g1.id })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,order:test',
+    })
+
+    await seneca.post('sys:traverse,on:run,do:start', {
+      runId: createRes.run.id,
+    })
+
+    // root (g0) → g1 → g2: parents dispatched before their children
+    expect(dispatchOrder).equal(['foo/g0', 'foo/g1', 'foo/g2'])
+  })
+
+  test('async-mode-reverse-order-dispatches-children-before-parents', async () => {
+    const dispatchOrder: string[] = []
+
+    const seneca = makeSeneca()
+      .use(Traverse, {
+        mode: 'async',
+        order: 'reverse',
+        relations: {
+          parental: [
+            ['foo/h0', 'foo/h1'],
+            ['foo/h1', 'foo/h2'],
+          ],
+        },
+      })
+      .message('aim:task,revorder:test', async function () {
+        return { ok: true }
+      })
+
+    await seneca.ready()
+
+    seneca.message(
+      'sys:traverse,do:dispatch,on:task',
+      async function (this: any, msg: any) {
+        dispatchOrder.push(msg.task.child_canon)
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: msg.task.id,
+        })
+        return { ok: true }
+      },
+    )
+
+    const rootEntityId = '123'
+    const rootEntity = 'foo/h0'
+
+    const h1 = await seneca.entity('foo/h1').save$({ h0_id: rootEntityId })
+    await seneca.entity('foo/h2').save$({ h1_id: h1.id })
+
+    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+      rootEntity,
+      rootEntityId,
+      taskMsg: 'aim:task,revorder:test',
+    })
+
+    await seneca.post('sys:traverse,on:run,do:start', {
+      runId: createRes.run.id,
+    })
+
+    // delete/teardown order: leaves first, root last
+    expect(dispatchOrder).equal(['foo/h2', 'foo/h1', 'foo/h0'])
   })
 
   test('async-mode-completes-only-after-all-tasks-done', async () => {

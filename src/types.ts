@@ -64,6 +64,11 @@ export type TaskEntity = {
   run_id: UUID
   status: 'pending' | 'dispatched' | 'done'
   task_msg: Message
+  // Topological rank stamped at creation (root/parents low, leaves/children
+  // high). do:start dispatches by this key so ordering is deterministic even
+  // though task rows are created concurrently. Ascending = parents-first
+  // (create/read), descending = children-first (delete/teardown).
+  seq: number
   dispatched_at?: Timestamp
   done_at?: Timestamp
   // Optional worker output recorded on completion. `result` is the task's
@@ -84,6 +89,12 @@ export type TraverseOptionsFull = {
   rootEntity: EntityID
   mode: 'sync' | 'async'
   scope: 'principal' | 'root'
+  // Dispatch order for a run's tasks. 'topological' = parents before children
+  // (default; correct for create/read — a referenced row exists before the row
+  // that references it). 'reverse' = children before parents (correct for
+  // delete/teardown — remove dependents first so a failure never orphans a
+  // reference). See do:start.
+  order: 'topological' | 'reverse'
   relations: {
     parental: Parental
   }

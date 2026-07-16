@@ -47,6 +47,7 @@ export type TaskEntity = {
     run_id: UUID;
     status: 'pending' | 'dispatched' | 'done';
     task_msg: Message;
+    seq: number;
     dispatched_at?: Timestamp;
     done_at?: Timestamp;
     result?: unknown;
@@ -58,6 +59,7 @@ export type TraverseOptionsFull = {
     rootEntity: EntityID;
     mode: 'sync' | 'async';
     scope: 'principal' | 'root';
+    order: 'topological' | 'reverse';
     relations: {
         parental: Parental;
     };
