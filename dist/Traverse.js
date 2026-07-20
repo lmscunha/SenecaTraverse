@@ -5,7 +5,6 @@ const shape_1 = require("shape");
 const validateMode = (0, shape_1.Shape)((0, shape_1.Exact)('sync', 'async'));
 function Traverse(options) {
     const seneca = this;
-    const { Optional } = seneca.util.Gubu;
     validateMode(options.mode);
     function hydrateTask(raw) {
         if (raw && typeof raw.save$ === 'function') {
@@ -51,15 +50,11 @@ function Traverse(options) {
     };
     seneca
         .fix('sys:traverse')
-        .message('find:deps', {
-        rootEntity: Optional(String),
-    }, msgFindDeps)
+        .message('find:deps', {}, msgFindDeps)
         .message('find:children', {
-        rootEntity: Optional(String),
         rootEntityId: String,
     }, msgFindChildren)
         .message('on:run,do:create', {
-        rootEntity: Optional(String),
         rootEntityId: String,
         taskMsg: String,
     }, msgCreateTaskRun)

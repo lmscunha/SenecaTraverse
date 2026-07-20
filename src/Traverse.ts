@@ -53,7 +53,6 @@ const validateMode = Shape(Exact('sync', 'async'))
 
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
-  const { Optional } = seneca.util.Gubu
 
   validateMode(options.mode)
 
@@ -107,15 +106,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     .fix('sys:traverse')
     .message(
       'find:deps',
-      {
-        rootEntity: Optional(String),
-      },
+      {},
       msgFindDeps,
     )
     .message(
       'find:children',
       {
-        rootEntity: Optional(String),
         rootEntityId: String,
       },
       msgFindChildren,
@@ -123,7 +119,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     .message(
       'on:run,do:create',
       {
-        rootEntity: Optional(String),
         rootEntityId: String,
         taskMsg: String,
       },
