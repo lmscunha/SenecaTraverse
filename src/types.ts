@@ -219,6 +219,12 @@ export interface RunStopResult extends BaseResult {
 /** Result for on:task,do:complete message */
 export interface TaskCompleteResult extends BaseResult {
   ok: true
+  // Number of tasks the run has recorded done so far (its O(1) completed_tasks
+  // counter). Absent only when the completion referenced an unknown task.
+  doneTasks?: number
+  // The run after this completion, so callers can observe the status without a
+  // reload. Absent only for an unknown-task no-op.
+  run?: RunEntity
 }
 
 /** Result for on:run,did:complete message */

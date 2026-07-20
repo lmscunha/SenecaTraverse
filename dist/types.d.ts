@@ -158,6 +158,8 @@ export interface RunStopResult extends BaseResult {
 /** Result for on:task,do:complete message */
 export interface TaskCompleteResult extends BaseResult {
     ok: true;
+    doneTasks?: number;
+    run?: RunEntity;
 }
 /** Result for on:run,did:complete message */
 export interface RunDidCompleteResult extends BaseResult {
