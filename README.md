@@ -40,11 +40,36 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 - `debug` : boolean
 - `rootExecute` : boolean
 - `rootEntity` : string
+- `mode` : `'sync' | 'async'`
+- `taskMsgAllow` : string[]
 - `relations` : object
 - `customRef` : object
 - `init$` : boolean
 
 <!--END:options-->
+
+### Execution modes
+
+- **`sync`** (default): `do:start` dispatches tasks sequentially in-process and
+  marks the run `completed` when the loop finishes.
+- **`async`**: `do:start` fans tasks out fire-and-forget and returns
+  immediately. Each task's host must signal completion with
+  `sys:traverse,on:task,do:complete` (`taskId`). The run advances to `completed`
+  once `completed_tasks` reaches `total_tasks`.
+
+  The completion counter is advanced under a per-run in-process lock, so
+  concurrent completions are safe within a single process. A multi-process
+  deployment that shares one store and completes tasks from different processes
+  must rely on store-level atomicity for the counter — the in-process lock does
+  not span processes.
+
+### Security: `taskMsgAllow`
+
+`task_msg` is dispatched as an arbitrary Seneca message pattern. If
+`sys:traverse,on:run,do:create` is reachable from untrusted input, set
+`taskMsgAllow` to the list of permitted patterns; `do:create` then rejects any
+other `taskMsg` with `{ ok: false, why: 'task-msg-not-allowed' }`. An empty
+allowlist (the default) permits any pattern and assumes a trusted caller.
 
 <!--START:action-list-->
 
