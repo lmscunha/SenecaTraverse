@@ -84,11 +84,8 @@ export type TraverseOptionsFull = {
   debug: boolean
   rootExecute: boolean
   rootEntity: EntityID
-  mode: 'sync' | 'async'
-  // Allowlist of task message patterns that `on:run,do:create` may schedule.
-  // Empty = allow any pattern (trusted-caller assumption). Set this whenever
-  // `do:create` is reachable from untrusted input to prevent arbitrary action
-  // dispatch via `task_msg`.
+  // Allowlist of task_msg patterns do:create may schedule. Empty = allow any
+  // (trusted caller); set it when do:create is reachable from untrusted input.
   taskMsgAllow: string[]
   relations: {
     parental: Parental

@@ -349,7 +349,6 @@ describe('Traverse: complete task barrier', () => {
 
     const seneca = makeSeneca()
       .use(Traverse, {
-        mode: 'async',
         rootExecute: false,
         relations: {
           parental: [
@@ -485,7 +484,6 @@ describe('Traverse: complete task barrier', () => {
 
     const seneca = makeSeneca()
       .use(Traverse, {
-        mode: 'async',
         rootExecute: false,
         relations: { parental: [['foo/j0', 'foo/j1']] },
       })

@@ -8,16 +8,16 @@ import Traverse from '..'
 import { makeSeneca, sleep } from './utils'
 
 describe('Traverse: atomic rollback', () => {
-  test('run-completes-through-sync-loop', async () => {
+  test('run-completes', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
         relations: { parental: [['foo/s0', 'foo/s1']] },
       })
       .message('aim:task,run:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
-        taskEnt.status = 'done'
-        taskEnt.done_at = Date.now()
-        await taskEnt.save$()
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: taskEnt.id,
+        })
         return { ok: true }
       })
 
@@ -44,9 +44,9 @@ describe('Traverse: atomic rollback', () => {
     expect(run.status).equal('completed')
   })
 
-  test('stop-halts-the-sync-loop', async () => {
-    // A stop mid-run must halt the sync loop: not every task dispatches and the
-    // run ends 'stopped', not 'completed'.
+  test('stop-halts-the-run', async () => {
+    // A stop mid-run halts dispatch: not every task runs and the run ends
+    // 'stopped', not 'completed'.
     const dispatched: string[] = []
 
     const seneca = makeSeneca()
@@ -63,9 +63,9 @@ describe('Traverse: atomic rollback', () => {
         dispatched.push(msg.task.child_canon)
         const taskEnt = msg.task
         await sleep(5)
-        taskEnt.status = 'done'
-        taskEnt.done_at = Date.now()
-        await taskEnt.save$()
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: taskEnt.id,
+        })
         return { ok: true }
       })
 
@@ -161,9 +161,9 @@ describe('Traverse: atomic rollback', () => {
       })
       .message('aim:task,rollback:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
-        taskEnt.status = 'done'
-        taskEnt.done_at = Date.now()
-        await taskEnt.save$()
+        await this.post('sys:traverse,on:task,do:complete', {
+          taskId: taskEnt.id,
+        })
         return { ok: true }
       })
 

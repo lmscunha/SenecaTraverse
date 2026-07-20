@@ -41,7 +41,6 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 * `debug` : boolean
 * `rootExecute` : boolean
 * `rootEntity` : string
-* `mode` : string
 * `taskMsgAllow` : array
 * `relations` : object
 * `customRef` : object
@@ -50,29 +49,24 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 
 <!--END:options-->
 
-### Execution modes
+### Execution
 
-- **`sync`** (default): `do:start` dispatches tasks sequentially in-process
-  (forward BFS) and marks the run `completed` when the loop finishes. Best for
-  in-process batch jobs where the dispatch call awaits the work.
-- **`async`**: `do:start` returns immediately and drives the tasks in
-  reverse-BFS order, **one task in flight at a time** — the deepest pending task
-  dispatches first, and each completion chains the next-deepest, so a parent is
-  never processed before its children (a destructive task can't strand a dangling
-  reference). Each task's host must signal completion with
-  `sys:traverse,on:task,do:complete` (`taskId`); the run advances to `completed`
-  once `completed_tasks` reaches `total_tasks`. This is the transport-friendly
-  mode: point `do:dispatch` at a queue (e.g. SQS) and the worker posts
-  `do:complete` out-of-band.
+`do:create` builds the run and one task per record in topological order
+(root → leaves), stamping each task's depth. `do:start` then executes them in
+**reverse** — deepest first, **one task in flight at a time**: it dispatches the
+deepest pending task and returns; each `do:complete` (`taskId`) chains the
+next-deepest. A parent is never processed before its children, so a destructive
+task can't strand a dangling reference. The run reaches `completed` once every
+task reports done.
 
-  Because exactly one task is dispatched per completion, completions never
-  overlap and the counter update needs no in-process lock. Parallel scale is the
-  transport's concern: a multi-process deployment that fans tasks out across
-  workers must make completion atomic at the store (override `do:claim`).
-
-  Delivery is at-least-once: `do:complete` is idempotent — the persisted `done`
-  status absorbs redelivery, so a duplicate signal never advances the counter
-  twice.
+Delivery goes through the overridable `do:dispatch` pin. In-process, the default
+delivers `task_msg` and the handler posts `do:complete` when done. For a
+transport, override `do:dispatch` to enqueue (e.g. SQS) — the worker posts
+`do:complete` out-of-band. Either way exactly one task is in flight, so
+completions never overlap and no in-process lock is needed; distributed hosts
+that fan tasks out across processes override `do:claim` to make completion
+atomic at the store. Delivery is at-least-once: `do:complete` is idempotent, so a
+redelivered signal never double-counts.
 
 ### Atomic create
 

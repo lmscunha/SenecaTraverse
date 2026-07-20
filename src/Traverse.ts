@@ -1,7 +1,5 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
-import { Shape, Exact } from 'shape'
-
 import type {
   // Base Types
   Seneca,
@@ -50,13 +48,11 @@ import type {
 
 export type { TraverseOptions } from './types'
 
-const validateMode = Shape(Exact('sync', 'async'))
-
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
 
-  validateMode(options.mode)
-
+  // Rebuild a live entity from a plain object (a task arriving over a transport
+  // loses its save$/load$ methods).
   function createTaskEntity(raw: any): TaskEntity {
     if (raw && typeof raw.save$ === 'function') {
       return raw
@@ -64,12 +60,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return seneca.entity('sys/traversetask').data$(raw)
   }
 
-  // A Run process can have multiple tasks as children.
-  // Thus, this plugin automatically maps these relations for the client.
   options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
-  // Build a new array instead of pushing in place: the incoming options may
-  // share the defaults' `parental` reference, and mutating it would leak the
-  // injected relation across plugin loads (accumulating duplicates).
+  // Copy, don't mutate: options may share the defaults' `parental` array.
   options.relations = {
     ...options.relations,
     parental: [
@@ -134,10 +126,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
     .message('on:run,do:claim', { run: Object }, msgRunClaim)
 
-  // Returns a sorted list of entity pairs
-  // starting from a given entity.
-  // In breadth-first order, sorting first by level,
-  // then alphabetically in each level.
+  // Entity pairs from a root, breadth-first, sorted by level then name.
   async function msgFindDeps(
     this: Seneca,
     msg: FindDepsInput,
@@ -192,8 +181,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     }
   }
 
-  // Returns all discovered child
-  // instances with their parent relationship.
+  // All child instances with their parent relationship.
   async function msgFindChildren(
     this: Seneca,
     msg: FindChildrenInput,
@@ -264,8 +252,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     }
   }
 
-  // Create a run process and generate tasks
-  // for each child entity to be executed.
+  // Create a run and one task per child entity (topological order).
   async function msgCreateTaskRun(
     this: Seneca,
     msg: CreateTaskRunInput,
@@ -277,9 +264,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     const rootEntityId = msg.rootEntityId
     const isRootIncluded = options.rootExecute
 
-    // `task_msg` is later dispatched as an arbitrary Seneca pattern. When an
-    // allowlist is configured, refuse patterns outside it so untrusted callers
-    // can't schedule arbitrary actions.
+    // task_msg is dispatched as an arbitrary Seneca pattern; gate it when set.
     const taskMsgAllow = options.taskMsgAllow
     if (taskMsgAllow.length > 0 && !taskMsgAllow.includes(taskMsg as string)) {
       seneca.log.error('task-msg-not-allowed', { task_msg: taskMsg })
@@ -303,9 +288,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       },
     )
 
-    // BFS depth per canon, derived from the (BFS-ordered) children: a canon's
-    // depth is its parent's + 1. Stamped on each task as `seq` so async mode
-    // can execute deepest-first.
+    // Depth per canon (parent + 1), stamped on each task as `seq` for
+    // deepest-first execution.
     const depthByCanon = new Map<EntityID, number>([[rootEntity, 0]])
     for (const child of findChildrenRes.children) {
       if (!depthByCanon.has(child.child_canon)) {
@@ -371,14 +355,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     })
 
     if (taskFailedCount > 0) {
-      // Any creation failure is unrecoverable: remove the created tasks and the
-      // run so the caller retries from a clean state (no partial run).
+      // Roll back so no run starts from a partial task set.
       const rollback = await Promise.allSettled([
         ...createdTasks.map((t) => t.remove$()),
         run.remove$(),
       ])
-      // Rollback is best-effort: a failed remove$ can orphan a task or the run.
-      // Log so the leak is observable rather than silent.
+      // Best-effort: log a failed removal so a leak is observable.
       for (const outcome of rollback) {
         if (outcome.status === 'rejected') {
           seneca.log.error('task-create-rollback-failed', {
@@ -426,9 +408,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
-  // Start a run: async dispatches the single deepest pending task, then each
-  // completion chains the next one (reverse-BFS, one task in flight at a time);
-  // sync runs the tasks in-process to completion.
+  // Start a run: dispatch the deepest pending task and return; each completion
+  // chains the next (reverse order, one task in flight at a time).
   async function msgRunStart(
     this: Seneca,
     msg: RunStartInput,
@@ -449,31 +430,16 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     run.started_at = Date.now()
     await run.save$()
 
-    if (options.mode === 'async') {
-      // Dispatch the deepest pending task; each completion chains the next.
-      await dispatchNext(run.id)
+    await dispatchNext(run.id)
 
-      const startedRun: RunEntity = await seneca
-        .entity('sys/traverse')
-        .load$(run.id)
+    const startedRun: RunEntity = await seneca
+      .entity('sys/traverse')
+      .load$(run.id)
 
-      return { ok: true, run: startedRun }
-    }
-
-    const findChildrenRes: FindChildrenResult = await seneca.post(
-      'sys:traverse,find:children',
-      {
-        rootEntity: 'sys/traverse',
-        rootEntityId: run.id,
-      },
-    )
-
-    processRunTasks(run, findChildrenRes.children)
-    return { ok: true, run }
+    return { ok: true, run: startedRun }
   }
 
-  // Stop a Run process execution,
-  // preventing the dispatching of the next pending child task.
+  // Stop a run: halts dispatch of the next pending task.
   async function msgRunStop(
     this: Seneca,
     msg: RunStopInput,
@@ -496,6 +462,9 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true, run }
   }
 
+  // Deliver a task to its handler. Default posts in-process; a transport host
+  // overrides this to enqueue. Either way the handler/worker posts do:complete
+  // when the work is done, which chains the next task.
   async function msgDispatch(
     this: Seneca,
     msg: DispatchInput,
@@ -517,9 +486,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       return { ok: true }
     }
 
-    // Transition to done exactly once. `status === 'done'` is the persisted
-    // idempotency marker: an at-least-once transport redelivering the same
-    // completion (or a duplicate signal) must not advance the counter twice.
+    // Transition once — `done` is the idempotency marker against at-least-once
+    // redelivery, so the counter can't advance or re-chain twice.
     if (task.status !== 'done') {
       task.status = 'done'
       task.done_at = Date.now()
@@ -535,8 +503,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
         await run.save$()
       }
 
-      // Chain the next task (deepest-first). Exactly one task is in flight at a
-      // time, so completions never overlap and the counter needs no lock.
       await dispatchNext(task.run_id)
     }
 
@@ -554,8 +520,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
-  // Overridable pin: swap in a store-level CAS (e.g. DynamoDB attribute_not_exists)
-  // for atomic distributed completion so did:complete fires exactly once.
+  // Overridable: a distributed host swaps in a store-level CAS so the run
+  // completes exactly once.
   async function msgRunClaim(
     this: Seneca,
     msg: RunClaimInput,
@@ -577,9 +543,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true, claimed: true, run }
   }
 
-  // Attempt to complete a run through the (overridable) claim pin, emitting
-  // did:complete only for the caller that wins the claim — so the hook fires
-  // exactly once per run regardless of how many tasks report done concurrently.
+  // Claim the run, firing did:complete only for the winning caller.
   async function checkAndCompleteRun(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
@@ -599,15 +563,10 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     }
   }
 
-  // Async driver: dispatch the single deepest pending task. Each completion
-  // calls this again, so exactly one task is in flight at a time — reverse-BFS
-  // order (a parent runs only after every deeper task is done) with no
-  // concurrent completions, hence no counter lock. When no pending task remains,
-  // finalise the run through the (overridable) claim pin.
-  //
-  // The next task is the highest-`seq` pending row: one query, filtered to the
-  // run and ordered deepest-first, returning a single row — the store never
-  // loads the whole task table.
+  // Dispatch the deepest pending task, or finalise the run when none remain.
+  // One query — filtered to the run, deepest-first, one row — never scans the
+  // whole task table. Fire-and-forget: completion arrives via do:complete, which
+  // chains the next, keeping exactly one task in flight (so no counter lock).
   async function dispatchNext(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
@@ -619,19 +578,15 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       .entity('sys/traversetask')
       .list$({ run_id: runId, status: 'pending', sort$: { seq: -1 }, limit$: 1 })
 
-    // No pending task left — finalise the run.
     if (!next) {
       await checkAndCompleteRun(runId)
       return
     }
 
-    // Fire-and-forget: completion arrives out-of-band via do:complete, which
-    // chains the following task. A rejected dispatch must not surface as an
-    // unhandled rejection.
     seneca
       .post('sys:traverse,on:task,do:execute', { task: next })
       .catch((err: unknown) =>
-        seneca.log.error('async-dispatch-failed', { task_id: next.id, err }),
+        seneca.log.error('dispatch-failed', { task_id: next.id, err }),
       )
   }
 
@@ -652,60 +607,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       : entityId.slice(canonSeparatorIdx + 1)
   }
 
-  async function completeRunDirect(runId: UUID): Promise<void> {
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
-
-    if (!run || run.status === 'stopped' || run.status === 'completed') {
-      return
-    }
-
-    run.status = 'completed'
-    run.completed_at = Date.now()
-    await run.save$()
-  }
-
-  async function processRunTasks(
-    runEnt: RunEntity,
-    tasks: ChildInstance[],
-  ): Promise<void> {
-    if (tasks.length === 0) {
-      await completeRunDirect(runEnt.id)
-      return
-    }
-
-    let run = runEnt
-
-    for (const taskToProcess of tasks) {
-      run = await seneca
-        .entity(taskToProcess.parent_canon)
-        .load$(taskToProcess.parent_id)
-
-      if (!run || run.status === 'stopped') {
-        break
-      }
-
-      const task: TaskEntity = await seneca
-        .entity('sys/traversetask')
-        .load$(taskToProcess.child_id)
-
-      if (!task) {
-        continue
-      }
-
-      const canProcessNextTask =
-        task.status !== 'dispatched' && task.status !== 'done'
-
-      if (!canProcessNextTask) {
-        continue
-      }
-
-      await seneca.post('sys:traverse,on:task,do:execute', {
-        task,
-      })
-    }
-
-    await completeRunDirect(runEnt.id)
-  }
 }
 
 // Default options.
@@ -714,7 +615,6 @@ const defaults: TraverseOptionsFull = {
   debug: false,
   rootExecute: true,
   rootEntity: 'sys/user',
-  mode: 'sync',
   taskMsgAllow: [],
   relations: {
     parental: [],

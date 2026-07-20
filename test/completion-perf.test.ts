@@ -16,7 +16,6 @@ describe('Traverse: completion uses a bounded next-task query', () => {
   async function measureCompletionScans(childCount: number) {
     const seneca = makeSeneca()
       .use(Traverse, {
-        mode: 'async',
         rootExecute: false,
         relations: { parental: [['perf/root', 'perf/child']] },
       })

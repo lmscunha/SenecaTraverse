@@ -17,7 +17,6 @@ describe('Traverse: async completion barrier correctness', () => {
 
     const seneca = makeSeneca()
       .use(Traverse, {
-        mode: 'async',
         rootExecute: false,
         relations: { parental: [['race/root', 'race/child']] },
       })
@@ -62,7 +61,6 @@ describe('Traverse: async completion barrier correctness', () => {
   test('duplicate completion signals do not overcount', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
-        mode: 'async',
         rootExecute: false,
         relations: { parental: [['dup/root', 'dup/child']] },
       })
