@@ -199,12 +199,12 @@ describe('Traverse: run lifecycle', () => {
     const timestamps = tasks.map((t: any) => t.done_at)
     expect(new Set(timestamps).size).equal(timestamps.length)
 
-    // Reverse order: deeper tasks (higher seq) complete before shallower ones.
+    // Topological order (default): shallower tasks (lower seq) complete first.
     const byCompletion = [...tasks].sort(
       (a: any, b: any) => a.done_at - b.done_at,
     )
     for (let i = 1; i < byCompletion.length; i++) {
-      expect(byCompletion[i].seq <= byCompletion[i - 1].seq).equal(true)
+      expect(byCompletion[i].seq >= byCompletion[i - 1].seq).equal(true)
     }
 
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)
@@ -328,10 +328,10 @@ describe('Traverse: run lifecycle', () => {
       expect(task.status).equal('done')
     }
 
-    // Reverse order: each deeper task completes before its parent.
+    // Topological order (default): each parent completes before its children.
     const bySeq = [...tasks].sort((a: any, b: any) => a.seq - b.seq)
     for (let i = 1; i < bySeq.length; i++) {
-      expect(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true)
+      expect(bySeq[i].done_at > bySeq[i - 1].done_at).equal(true)
     }
 
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)
@@ -670,6 +670,7 @@ describe('Traverse: run lifecycle', () => {
 
     const seneca = makeSeneca()
       .use(Traverse, {
+        reverse: true,
         relations: {
           parental: [
             ['foo/e0', 'foo/e1'],
@@ -743,6 +744,7 @@ describe('Traverse: run lifecycle', () => {
 
     const seneca = makeSeneca()
       .use(Traverse, {
+        reverse: true,
         relations: {
           parental: [['foo/b0', 'foo/b1']],
         },
@@ -875,10 +877,10 @@ describe('Traverse: run lifecycle', () => {
       tasksRunStart.map((t: any) => t.id).sort(),
     )
 
-    // Reverse order: each deeper task completes before its parent.
+    // Topological order (default): each parent completes before its children.
     const bySeq = [...tasksRestart].sort((a: any, b: any) => a.seq - b.seq)
     for (let i = 1; i < bySeq.length; i++) {
-      expect(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true)
+      expect(bySeq[i].done_at > bySeq[i - 1].done_at).equal(true)
     }
 
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)

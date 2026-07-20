@@ -41,6 +41,7 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 * `debug` : boolean
 * `rootExecute` : boolean
 * `rootEntity` : string
+* `reverse` : boolean
 * `taskMsgAllow` : array
 * `relations` : object
 * `customRef` : object
@@ -52,12 +53,17 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 ### Execution
 
 `do:create` builds the run and one task per record in topological order
-(root → leaves), stamping each task's depth. `do:start` then executes them in
-**reverse** — deepest first, **one task in flight at a time**: it dispatches the
-deepest pending task and returns; each `do:complete` (`taskId`) chains the
-next-deepest. A parent is never processed before its children, so a destructive
-task can't strand a dangling reference. The run reaches `completed` once every
-task reports done.
+(root → leaves), stamping each task's depth. `do:start` then executes them
+**one task in flight at a time**: it dispatches the next pending task and
+returns; each `do:complete` (`taskId`) chains the following one. The run reaches
+`completed` once every task reports done.
+
+Order is set by the `reverse` option (default `false`):
+
+- `false` — **topological**: root/shallowest first. Backward-compatible default.
+- `true` — **reverse**: deepest first, so a parent runs only after its children.
+  Use this when a task mutates records destructively (e.g. delete) and must not
+  strand a dangling reference to a child.
 
 Delivery goes through the overridable `do:dispatch` pin. In-process, the default
 delivers `task_msg` and the handler posts `do:complete` when done. For a

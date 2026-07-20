@@ -84,6 +84,9 @@ export type TraverseOptionsFull = {
   debug: boolean
   rootExecute: boolean
   rootEntity: EntityID
+  // Execution order. false (default) = topological, root/shallowest first.
+  // true = reverse, deepest first, so a parent runs only after its children.
+  reverse: boolean
   // Allowlist of task_msg patterns do:create may schedule. Empty = allow any
   // (trusted caller); set it when do:create is reachable from untrusted input.
   taskMsgAllow: string[]
