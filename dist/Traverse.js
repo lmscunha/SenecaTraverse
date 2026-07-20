@@ -194,54 +194,61 @@ function Traverse(options) {
             rootEntity,
             rootEntityId,
         });
-        const tasksCreationPromises = [];
+        // BFS depth per canon, derived from the (BFS-ordered) children: a canon's
+        // depth is its parent's + 1. Stamped on each task as `seq` so async mode
+        // can execute deepest-first.
+        const depthByCanon = new Map([[rootEntity, 0]]);
+        for (const child of findChildrenRes.children) {
+            if (!depthByCanon.has(child.child_canon)) {
+                depthByCanon.set(child.child_canon, (depthByCanon.get(child.parent_canon) ?? 0) + 1);
+            }
+        }
+        const taskSpecs = [];
         if (isRootIncluded) {
-            // Process the action on the root data storage,
-            // not only on its children.
-            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
-                run_id: run.id,
+            taskSpecs.push({
                 parent_id: rootEntityId,
                 child_id: rootEntityId,
                 parent_canon: rootEntity,
                 child_canon: rootEntity,
-                status: 'pending',
-                task_msg: run.task_msg,
-            }));
+                seq: 0,
+            });
         }
-        findChildrenRes.children.forEach((child) => {
-            tasksCreationPromises.push(seneca.entity('sys/traversetask').save$({
-                run_id: run.id,
-                parent_id: child.parent_id,
-                child_id: child.child_id,
-                parent_canon: child.parent_canon,
-                child_canon: child.child_canon,
-                status: 'pending',
-                task_msg: run.task_msg,
-            }));
-        });
-        const tasksCreationRes = await Promise.allSettled(tasksCreationPromises);
+        for (const child of findChildrenRes.children) {
+            taskSpecs.push({
+                ...child,
+                seq: depthByCanon.get(child.child_canon) ?? 0,
+            });
+        }
+        const tasksCreationRes = await Promise.allSettled(taskSpecs.map((spec) => seneca.entity('sys/traversetask').save$({
+            run_id: run.id,
+            parent_id: spec.parent_id,
+            child_id: spec.child_id,
+            parent_canon: spec.parent_canon,
+            child_canon: spec.child_canon,
+            seq: spec.seq,
+            status: 'pending',
+            task_msg: run.task_msg,
+        })));
         let taskSuccessCount = 0;
         let taskFailedCount = 0;
-        let childIdx = isRootIncluded ? -1 : 0;
-        for (const taskCreation of tasksCreationRes) {
+        const levelSizes = {};
+        tasksCreationRes.forEach((taskCreation, idx) => {
+            const spec = taskSpecs[idx];
             if (taskCreation.status === 'fulfilled') {
                 taskSuccessCount++;
-                childIdx++;
-                continue;
+                levelSizes[spec.seq] = (levelSizes[spec.seq] ?? 0) + 1;
+                return;
             }
             taskFailedCount++;
-            const childrenData = childIdx === -1
-                ? { child_canon: rootEntity, child_id: rootEntityId }
-                : findChildrenRes.children[childIdx];
             // TODO: add retry
             seneca.log.error('task-create-failed', {
-                child_canon: childrenData?.child_canon,
-                child_id: childrenData?.child_id,
+                child_canon: spec.child_canon,
+                child_id: spec.child_id,
                 err: taskCreation.reason,
             });
-            childIdx++;
-        }
+        });
         run.total_tasks = taskSuccessCount;
+        run.level_sizes = levelSizes;
         await run.save$();
         return {
             ok: true,
@@ -276,36 +283,19 @@ function Traverse(options) {
         run.status = 'active';
         run.started_at = Date.now();
         await run.save$();
-        const findChildrenRes = await seneca.post('sys:traverse,find:children', {
-            rootEntity: 'sys/traverse',
-            rootEntityId: run.id,
-        });
-        const runTasksSpec = findChildrenRes.children;
         if (options.mode === 'async') {
-            const tasks = await Promise.all(runTasksSpec.map((taskSpec) => seneca.entity('sys/traversetask').load$(taskSpec.child_id)));
-            for (const task of tasks) {
-                if (!task || task.status === 'done' || task.status === 'dispatched') {
-                    continue;
-                }
-                // Fire-and-forget: async mode returns without awaiting task
-                // completion. A rejected dispatch must not become an unhandled
-                // rejection or abort the fan-out of remaining tasks.
-                seneca
-                    .post('sys:traverse,on:task,do:execute', { task })
-                    .catch((err) => seneca.log.error('async-dispatch-failed', {
-                    task_id: task.id,
-                    err,
-                }));
-            }
-            // Zero tasks or all already done: barrier never fires, so complete here.
-            // In-flight dispatches are not yet done, so a live run is not falsely completed.
-            await checkAndCompleteRun(run.id);
+            // Dispatch the deepest pending level; completions drive the walk upward.
+            await withRunLock(run.id, () => advanceLevel(run.id));
             const startedRun = await seneca
                 .entity('sys/traverse')
                 .load$(run.id);
             return { ok: true, run: startedRun };
         }
-        processRunTasks(run, runTasksSpec);
+        const findChildrenRes = await seneca.post('sys:traverse,find:children', {
+            rootEntity: 'sys/traverse',
+            rootEntityId: run.id,
+        });
+        processRunTasks(run, findChildrenRes.children);
         return { ok: true, run };
     }
     // Stop a Run process execution,
@@ -364,7 +354,7 @@ function Traverse(options) {
                     await run.save$();
                 }
             }
-            await checkAndCompleteRun(task.run_id);
+            await advanceLevel(task.run_id);
             const run = await seneca
                 .entity('sys/traverse')
                 .load$(task.run_id);
@@ -377,9 +367,7 @@ function Traverse(options) {
     // Overridable pin: swap in a store-level CAS (e.g. DynamoDB attribute_not_exists)
     // for atomic distributed completion so did:complete fires exactly once.
     async function msgRunClaim(msg) {
-        const run = await seneca
-            .entity('sys/traverse')
-            .load$(msg.run.id);
+        const run = await seneca.entity('sys/traverse').load$(msg.run.id);
         if (!run || run.status !== 'active') {
             return { ok: true, claimed: false, run };
         }
@@ -404,6 +392,62 @@ function Traverse(options) {
             await seneca.post('sys:traverse,on:run,did:complete', {
                 run: claimRes.run,
             });
+        }
+    }
+    // Reverse-BFS level walk for async runs: dispatch the deepest not-yet-started
+    // level, then advance one level shallower each time a level fully completes,
+    // so a parent is dispatched only after all its children are done. Which level
+    // to release is arithmetic on the O(1) completed_tasks counter against the
+    // per-level sizes — the task table is scanned only to dispatch a level (once
+    // per level), never per completion.
+    async function advanceLevel(runId) {
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run || run.status !== 'active') {
+            return;
+        }
+        const sizes = run.level_sizes ?? {};
+        const seqsDesc = Object.keys(sizes)
+            .map(Number)
+            .sort((a, b) => b - a);
+        const done = run.completed_tasks ?? 0;
+        let nextSeq;
+        if (done === 0) {
+            nextSeq = seqsDesc[0];
+        }
+        else {
+            let cum = 0;
+            let atBoundary = false;
+            for (let i = 0; i < seqsDesc.length; i++) {
+                cum += sizes[seqsDesc[i]] ?? 0;
+                if (done === cum) {
+                    nextSeq = seqsDesc[i + 1];
+                    atBoundary = true;
+                    break;
+                }
+            }
+            // Mid-level: a level is still draining, nothing to release yet.
+            if (!atBoundary) {
+                return;
+            }
+        }
+        // Past the shallowest level — every task is done.
+        if (nextSeq === undefined) {
+            await checkAndCompleteRun(runId);
+            return;
+        }
+        const levelTasks = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: runId, seq: nextSeq });
+        for (const task of levelTasks) {
+            if (task.status !== 'pending') {
+                continue;
+            }
+            // Fire-and-forget: siblings dispatch in parallel; completion arrives
+            // out-of-band via do:complete. A rejected dispatch must not abort the
+            // rest of the level or surface as an unhandled rejection.
+            seneca
+                .post('sys:traverse,on:task,do:execute', { task })
+                .catch((err) => seneca.log.error('async-dispatch-failed', { task_id: task.id, err }));
         }
     }
     function compareRelations(relations) {

@@ -526,6 +526,55 @@ const utils_1 = require("./utils");
         });
         (0, code_1.expect)(startRes.run.status).equal('completed');
     });
+    // Reverse-BFS guarantee: a parent is never executed before its children. This
+    // is what keeps a destructive task (e.g. delete) from stranding a dangling
+    // reference — children are scrubbed before the parent that points at them.
+    (0, node_test_1.test)('async-mode-executes-children-before-parents', async () => {
+        const executed = [];
+        const seneca = (0, utils_1.makeSeneca)()
+            .use(__1.default, {
+            mode: 'async',
+            relations: {
+                parental: [
+                    ['foo/e0', 'foo/e1'],
+                    ['foo/e1', 'foo/e2'],
+                ],
+            },
+        })
+            .message('aim:task,order:test', async function (msg) {
+            const task = msg.task;
+            // Every deeper task must already be done when this one runs.
+            const deeper = await this.entity('sys/traversetask').list$({
+                run_id: task.run_id,
+            });
+            const violation = deeper.find((t) => t.seq > task.seq && t.status !== 'done');
+            (0, code_1.expect)(violation).equal(undefined);
+            executed.push(task.child_canon);
+            await (0, utils_1.sleep)(Math.random() * 10);
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: task.id,
+            });
+            return { ok: true };
+        });
+        await seneca.ready();
+        const rootEntityId = '123';
+        const rootEntity = 'foo/e0';
+        const e1 = await seneca.entity('foo/e1').save$({ e0_id: rootEntityId });
+        await seneca.entity('foo/e2').save$({ e1_id: e1.id });
+        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+            rootEntity,
+            rootEntityId,
+            taskMsg: 'aim:task,order:test',
+        });
+        await seneca.post('sys:traverse,on:run,do:start', {
+            runId: createRes.run.id,
+        });
+        await (0, utils_1.sleep)(150);
+        // Deepest-first: e2 (seq 2) then e1 (seq 1) then the root e0 (seq 0).
+        (0, code_1.expect)(executed).equal(['foo/e2', 'foo/e1', 'foo/e0']);
+        const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
+        (0, code_1.expect)(run.status).equal('completed');
+    });
     (0, node_test_1.test)('async-mode-complete-unknown-task', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, { mode: 'async' });
         await seneca.ready();
@@ -553,8 +602,12 @@ const utils_1 = require("./utils");
         // Override must register after ready() — Seneca loads plugins asynchronously,
         // so the plugin's handler is registered during ready(). A pre-ready .message()
         // call would be overwritten by the plugin. Hosts override the same way.
+        // Signal completion so the level walk advances to the next (shallower) level.
         seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
             dispatched.push(msg.task.child_canon);
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: msg.task.id,
+            });
             return { ok: true };
         });
         const rootEntityId = '123';
@@ -565,12 +618,13 @@ const utils_1 = require("./utils");
             rootEntityId,
             taskMsg: 'aim:task,dispatch:test',
         });
-        await seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id });
+        await seneca.post('sys:traverse,on:run,do:start', {
+            runId: createRes.run.id,
+        });
         await (0, utils_1.sleep)(50);
-        // override intercepts all dispatches; default transport never called
-        (0, code_1.expect)(dispatched.length).equal(2); // root + 1 child
-        (0, code_1.expect)(dispatched).includes('foo/b0');
-        (0, code_1.expect)(dispatched).includes('foo/b1');
+        // Override intercepts every dispatch; default transport never called.
+        // Reverse-BFS: the child (seq 1) dispatches before the root (seq 0).
+        (0, code_1.expect)(dispatched).equal(['foo/b1', 'foo/b0']);
     });
     (0, node_test_1.test)('restart-run-previously-stopped', async () => {
         const seneca = (0, utils_1.makeSeneca)()

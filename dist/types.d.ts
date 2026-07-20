@@ -39,6 +39,7 @@ export type RunEntity = {
     status: 'created' | 'active' | 'completed' | 'stopped';
     total_tasks: number;
     completed_tasks: number;
+    level_sizes: Record<string, number>;
     started_at?: Timestamp;
     completed_at?: Timestamp;
 } & Entity;
@@ -48,6 +49,7 @@ export type TaskEntity = {
     run_id: UUID;
     status: 'pending' | 'dispatched' | 'done';
     task_msg: Message;
+    seq: number;
     dispatched_at?: Timestamp;
     done_at?: Timestamp;
     result?: unknown;
