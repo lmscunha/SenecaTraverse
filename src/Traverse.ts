@@ -56,7 +56,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
   validateMode(options.mode)
 
-  function createEntity(raw: any): TaskEntity {
+  function createTaskEntity(raw: any): TaskEntity {
     if (raw && typeof raw.save$ === 'function') {
       return raw
     }
@@ -405,7 +405,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: TaskExecuteInput,
   ): Promise<TaskExecuteResult> {
-    const task: TaskEntity = createEntity(msg.task)
+    const task: TaskEntity = createTaskEntity(msg.task)
 
     if (task.status == 'done' || task.status == 'dispatched') {
       return { ok: true }
@@ -520,7 +520,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: DispatchInput,
   ): Promise<DispatchResult> {
-    const task: TaskEntity = createEntity(msg.task)
+    const task: TaskEntity = createTaskEntity(msg.task)
     await seneca.post(task.task_msg, { task })
     return { ok: true }
   }

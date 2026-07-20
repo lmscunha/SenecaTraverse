@@ -6,7 +6,7 @@ const validateMode = (0, shape_1.Shape)((0, shape_1.Exact)('sync', 'async'));
 function Traverse(options) {
     const seneca = this;
     validateMode(options.mode);
-    function createEntity(raw) {
+    function createTaskEntity(raw) {
         if (raw && typeof raw.save$ === 'function') {
             return raw;
         }
@@ -252,7 +252,7 @@ function Traverse(options) {
     }
     // Execute a single Run task.
     async function msgTaskExecute(msg) {
-        const task = createEntity(msg.task);
+        const task = createTaskEntity(msg.task);
         if (task.status == 'done' || task.status == 'dispatched') {
             return { ok: true };
         }
@@ -324,7 +324,7 @@ function Traverse(options) {
         return { ok: true, run };
     }
     async function msgDispatch(msg) {
-        const task = createEntity(msg.task);
+        const task = createTaskEntity(msg.task);
         await seneca.post(task.task_msg, { task });
         return { ok: true };
     }
