@@ -54,8 +54,6 @@ export type RunEntity = {
   task_msg: Message
   status: 'created' | 'active' | 'completed' | 'stopped'
   total_tasks: number
-  // Monotonic count of tasks that have reported done. Drives the async
-  // completion barrier in O(1) per completion (no per-completion table scan).
   completed_tasks: number
   started_at?: Timestamp
   completed_at?: Timestamp
@@ -69,10 +67,8 @@ export type TaskEntity = {
   task_msg: Message
   dispatched_at?: Timestamp
   done_at?: Timestamp
-  // Optional worker output recorded on completion. `result` is the task's
-  // return payload; `fragment` is an app-defined slice (e.g. a PII fragment)
-  // the host collects across a run.
   result?: unknown
+  // App-defined slice (e.g. a PII fragment) the host accumulates across a run.
   fragment?: unknown
 } & ChildInstance &
   Entity
@@ -126,7 +122,6 @@ export interface TaskExecuteInput {
   task: TaskEntity
 }
 
-/** Input for do:dispatch,on:task message */
 export interface DispatchInput {
   task: TaskEntity
 }
@@ -141,19 +136,16 @@ export interface RunStopInput {
   runId: string
 }
 
-/** Input for on:task,do:complete message */
 export interface TaskCompleteInput {
   taskId: string
   result?: unknown
   fragment?: unknown
 }
 
-/** Input for on:run,did:complete message */
 export interface RunDidCompleteInput {
   run: RunEntity
 }
 
-/** Input for on:run,do:claim message */
 export interface RunClaimInput {
   run: RunEntity
 }
@@ -199,7 +191,6 @@ export interface TaskExecuteResult extends BaseResult {
   ok: true
 }
 
-/** Result for do:dispatch,on:task message */
 export interface DispatchResult extends BaseResult {
   ok: true
 }
@@ -216,31 +207,18 @@ export interface RunStopResult extends BaseResult {
   run: RunEntity
 }
 
-/** Result for on:task,do:complete message */
 export interface TaskCompleteResult extends BaseResult {
   ok: true
-  // Number of tasks the run has recorded done so far (its O(1) completed_tasks
-  // counter). Absent only when the completion referenced an unknown task.
+  // Absent when the completion referenced an unknown task.
   doneTasks?: number
-  // The run after this completion, so callers can observe the status without a
-  // reload. Absent only for an unknown-task no-op.
+  // Absent for an unknown-task no-op.
   run?: RunEntity
 }
 
-/** Result for on:run,did:complete message */
 export interface RunDidCompleteResult extends BaseResult {
   ok: true
 }
 
-/**
- * Result for on:run,do:claim message.
- * `claimed` is true for exactly one caller — the one that won the transition to
- * `completed`. The default impl is best-effort (load-count-set); hosts running
- * concurrent distributed workers over large task volumes should override
- * on:run,do:claim with a store-level conditional write (e.g. DynamoDB
- * attribute_not_exists) to make the claim atomic and guarantee a single
- * did:complete without scanning every task.
- */
 export interface RunClaimResult extends BaseResult {
   ok: true
   claimed: boolean
