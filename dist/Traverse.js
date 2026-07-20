@@ -269,8 +269,8 @@ function Traverse(options) {
         await seneca.post('sys:traverse,do:dispatch,on:task', { task });
         return { ok: true };
     }
-    // Start a Run process execution,
-    // dispatching the next pending child task.
+    // Start a run: async dispatches the deepest level (reverse-BFS, driven by
+    // completions); sync runs the tasks in-process to completion.
     async function msgRunStart(msg) {
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
