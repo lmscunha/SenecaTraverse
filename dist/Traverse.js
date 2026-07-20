@@ -2,21 +2,11 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 Object.defineProperty(exports, "__esModule", { value: true });
 const shape_1 = require("shape");
-// `shape` (formerly `gubu`) builder nodes differ from the gubu bundled inside
-// seneca, so they can't be embedded in `plugin.defaults` or `.message()` arg
-// schemas — those are validated by seneca's own bundled gubu. Use shape only
-// for standalone option validation, and seneca.util.Gubu for message schemas.
 const validateMode = (0, shape_1.Shape)((0, shape_1.Exact)('sync', 'async'));
 function Traverse(options) {
     const seneca = this;
     const { Optional } = seneca.util.Gubu;
     validateMode(options.mode);
-    // Normalize whatever an `on:task` handler receives into a live task entity.
-    // In-process the arg is already an entity — pass it through so callers keep
-    // sharing one instance (the double-dispatch guard relies on that identity).
-    // Over a real transport the arg arrives as a plain object whose `save$`/
-    // `load$` methods didn't survive serialization; rebuild a live entity from
-    // the data so persistence still works in distributed mode.
     function hydrateTask(raw) {
         if (raw && typeof raw.save$ === 'function') {
             return raw;
@@ -340,12 +330,6 @@ function Traverse(options) {
     }
     async function msgDispatch(msg) {
         const task = hydrateTask(msg.task);
-        // Default dispatch only delivers the task to its target message. Completion
-        // is signalled separately through on:task,do:complete: the sync executor
-        // (processRunTasks) drives it in-process, while async/distributed workers
-        // call do:complete themselves once the work is finished. Keeping delivery
-        // and completion separate lets do:execute leave a task at `dispatched` for
-        // an out-of-process worker to pick up.
         await seneca.post(task.task_msg, { task });
         return { ok: true };
     }
