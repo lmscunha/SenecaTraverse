@@ -41,6 +41,7 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 - `rootExecute` : boolean
 - `rootEntity` : string
 - `mode` : `'sync' | 'async'`
+- `scope` : `'principal' | 'root'`
 - `taskMsgAllow` : string[]
 - `relations` : object
 - `customRef` : object
@@ -68,6 +69,21 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
   deployment that shares one store and completes tasks from different processes
   must rely on store-level atomicity (override `do:claim`) — the in-process lock
   does not span processes.
+
+### Scope: `scope`
+
+- **`principal`** (default): entity access uses the calling Seneca instance,
+  honouring its principal-scoping.
+- **`root`**: entity access uses `seneca.root`, bypassing principal-scoping so a
+  run can read/write entities owned by other principals — e.g. a support-triggered
+  run acting on another user's data.
+
+### Atomic create
+
+`on:run,do:create` creates the run and one task per record. If any task save
+fails, it rolls back — removing every created task and the run — and returns
+`{ ok: false, why: 'task-create-failed', tasksCreated: 0, tasksFailed }`. A run
+therefore never starts from a partial task set.
 
 ### Security: `taskMsgAllow`
 
