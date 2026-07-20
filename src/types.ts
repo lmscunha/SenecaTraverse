@@ -65,8 +65,8 @@ export type TaskEntity = {
   run_id: UUID
   status: 'pending' | 'dispatched' | 'done'
   task_msg: Message
-  // Depth from the root (root = 0). Tasks execute deepest-first, so a parent is
-  // never processed before its children.
+  // Depth from the root (root = 0). Dispatch orders tasks by `seq`: ascending
+  // (topological) by default, or deepest-first when the `reverse` option is set.
   seq: number
   dispatched_at?: Timestamp
   done_at?: Timestamp

@@ -281,8 +281,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       },
     )
 
-    // Depth per canon (parent + 1), stamped on each task as `seq` for
-    // deepest-first execution.
+    // Depth per canon (parent + 1), stamped on each task as `seq`; dispatch
+    // orders by it (topological, or deepest-first when `reverse`).
     const depthByCanon = new Map<EntityID, number>([[rootEntity, 0]])
     for (const child of findChildrenRes.children) {
       if (!depthByCanon.has(child.child_canon)) {
@@ -402,8 +402,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
-  // Start a run: dispatch the deepest pending task and return; each completion
-  // chains the next (reverse order, one task in flight at a time).
+  // Start a run: dispatch the first pending task (order set by the `reverse`
+  // option) and return; each completion chains the next, one task in flight.
   async function msgRunStart(
     this: Seneca,
     msg: RunStartInput,
