@@ -410,7 +410,7 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
-    (0, node_test_1.test)('async-mode-returns-before-tasks-complete', async () => {
+    (0, node_test_1.test)('returns-before-tasks-complete', async () => {
         let executionCount = 0;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -458,7 +458,7 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(finalRun.status).equal('completed');
         (0, code_1.expect)(finalRun.completed_at).exist();
     });
-    (0, node_test_1.test)('async-mode-completes-only-after-all-tasks-done', async () => {
+    (0, node_test_1.test)('completes-only-after-all-tasks-done', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
@@ -504,7 +504,7 @@ const utils_1 = require("./utils");
         const afterLast = await seneca.entity('sys/traverse').load$(runId);
         (0, code_1.expect)(afterLast.status).equal('completed');
     });
-    (0, node_test_1.test)('async-mode-empty-run-completes-immediately', async () => {
+    (0, node_test_1.test)('empty-run-completes-immediately', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             rootExecute: false,
             relations: { parental: [] },
@@ -524,7 +524,7 @@ const utils_1 = require("./utils");
     // Reverse-BFS guarantee: a parent is never executed before its children. This
     // is what keeps a destructive task (e.g. delete) from stranding a dangling
     // reference — children are scrubbed before the parent that points at them.
-    (0, node_test_1.test)('async-mode-executes-children-before-parents', async () => {
+    (0, node_test_1.test)('executes-children-before-parents', async () => {
         const executed = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -569,7 +569,7 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
-    (0, node_test_1.test)('async-mode-complete-unknown-task', async () => {
+    (0, node_test_1.test)('complete-unknown-task', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default);
         await seneca.ready();
         // Idempotent: a completion for a missing task is a no-op ok — an
@@ -580,7 +580,7 @@ const utils_1 = require("./utils");
         });
         (0, code_1.expect)(res.ok).equal(true);
     });
-    (0, node_test_1.test)('async-mode-dispatch-pin-override', async () => {
+    (0, node_test_1.test)('dispatch-pin-override', async () => {
         const dispatched = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {

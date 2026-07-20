@@ -270,7 +270,7 @@ const utils_1 = require("./utils");
         await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id });
         (0, code_1.expect)(completionCount).equal(1);
     });
-    (0, node_test_1.test)('async-mode-completion-via-barrier', async () => {
+    (0, node_test_1.test)('completion-via-barrier', async () => {
         let didCompleteRun = null;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -368,9 +368,9 @@ const utils_1 = require("./utils");
         const stillActive = await seneca.entity('sys/traverse').load$(run.id);
         (0, code_1.expect)(stillActive.status).equal('active');
     });
-    (0, node_test_1.test)('async-mode-zero-tasks-completes', async () => {
+    (0, node_test_1.test)('zero-tasks-completes', async () => {
         // A run with no tasks must still reach 'completed' (and fire did:complete)
-        // in async mode; the dispatch loop never routes through the barrier.
+        // when there are no tasks; the run completes on start.
         let didCompleteRun = null;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
