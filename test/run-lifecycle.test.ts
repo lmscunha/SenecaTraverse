@@ -524,7 +524,7 @@ describe('Traverse: run lifecycle', () => {
     expect(run.status).equal('completed')
   })
 
-  test('async-mode-returns-before-tasks-complete', async () => {
+  test('returns-before-tasks-complete', async () => {
     let executionCount = 0
 
     const seneca = makeSeneca()
@@ -583,7 +583,7 @@ describe('Traverse: run lifecycle', () => {
     expect(finalRun.completed_at).exist()
   })
 
-  test('async-mode-completes-only-after-all-tasks-done', async () => {
+  test('completes-only-after-all-tasks-done', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
         relations: {
@@ -642,7 +642,7 @@ describe('Traverse: run lifecycle', () => {
     expect(afterLast.status).equal('completed')
   })
 
-  test('async-mode-empty-run-completes-immediately', async () => {
+  test('empty-run-completes-immediately', async () => {
     const seneca = makeSeneca().use(Traverse, {
       rootExecute: false,
       relations: { parental: [] },
@@ -665,7 +665,7 @@ describe('Traverse: run lifecycle', () => {
   // Reverse-BFS guarantee: a parent is never executed before its children. This
   // is what keeps a destructive task (e.g. delete) from stranding a dangling
   // reference — children are scrubbed before the parent that points at them.
-  test('async-mode-executes-children-before-parents', async () => {
+  test('executes-children-before-parents', async () => {
     const executed: string[] = []
 
     const seneca = makeSeneca()
@@ -725,7 +725,7 @@ describe('Traverse: run lifecycle', () => {
     expect(run.status).equal('completed')
   })
 
-  test('async-mode-complete-unknown-task', async () => {
+  test('complete-unknown-task', async () => {
     const seneca = makeSeneca().use(Traverse)
     await seneca.ready()
 
@@ -738,7 +738,7 @@ describe('Traverse: run lifecycle', () => {
     expect(res.ok).equal(true)
   })
 
-  test('async-mode-dispatch-pin-override', async () => {
+  test('dispatch-pin-override', async () => {
     const dispatched: string[] = []
 
     const seneca = makeSeneca()

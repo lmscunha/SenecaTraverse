@@ -344,7 +344,7 @@ describe('Traverse: complete task barrier', () => {
     expect(completionCount).equal(1)
   })
 
-  test('async-mode-completion-via-barrier', async () => {
+  test('completion-via-barrier', async () => {
     let didCompleteRun: any = null
 
     const seneca = makeSeneca()
@@ -477,9 +477,9 @@ describe('Traverse: complete task barrier', () => {
     expect(stillActive.status).equal('active')
   })
 
-  test('async-mode-zero-tasks-completes', async () => {
+  test('zero-tasks-completes', async () => {
     // A run with no tasks must still reach 'completed' (and fire did:complete)
-    // in async mode; the dispatch loop never routes through the barrier.
+    // when there are no tasks; the run completes on start.
     let didCompleteRun: any = null
 
     const seneca = makeSeneca()
