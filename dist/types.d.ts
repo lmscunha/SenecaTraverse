@@ -38,6 +38,7 @@ export type RunEntity = {
     task_msg: Message;
     status: 'created' | 'active' | 'completed' | 'stopped';
     total_tasks: number;
+    completed_tasks: number;
     started_at?: Timestamp;
     completed_at?: Timestamp;
 } & Entity;
@@ -57,6 +58,7 @@ export type TraverseOptionsFull = {
     rootExecute: boolean;
     rootEntity: EntityID;
     mode: 'sync' | 'async';
+    taskMsgAllow: string[];
     relations: {
         parental: Parental;
     };
@@ -177,7 +179,7 @@ export interface RunClaimResult extends BaseResult {
 }
 export type MsgFindDepsFn = (msg: FindDepsInput) => Promise<FindDepsResult>;
 export type MsgFindChildrenFn = (msg: FindChildrenInput) => Promise<FindChildrenResult>;
-export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult>;
+export type MsgCreateTaskRunFn = (msg: CreateTaskRunInput) => Promise<CreateTaskRunResult | InvalidResult>;
 export type MsgTaskExecuteFn = (msg: TaskExecuteInput) => Promise<TaskExecuteResult>;
 export type MsgDispatchFn = (msg: DispatchInput) => Promise<DispatchResult>;
 export type MsgRunStartFn = (msg: RunStartInput) => Promise<RunStartResult | InvalidResult>;

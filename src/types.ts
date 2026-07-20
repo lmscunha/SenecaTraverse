@@ -54,6 +54,9 @@ export type RunEntity = {
   task_msg: Message
   status: 'created' | 'active' | 'completed' | 'stopped'
   total_tasks: number
+  // Monotonic count of tasks that have reported done. Drives the async
+  // completion barrier in O(1) per completion (no per-completion table scan).
+  completed_tasks: number
   started_at?: Timestamp
   completed_at?: Timestamp
 } & Entity
@@ -83,6 +86,11 @@ export type TraverseOptionsFull = {
   rootExecute: boolean
   rootEntity: EntityID
   mode: 'sync' | 'async'
+  // Allowlist of task message patterns that `on:run,do:create` may schedule.
+  // Empty = allow any pattern (trusted-caller assumption). Set this whenever
+  // `do:create` is reachable from untrusted input to prevent arbitrary action
+  // dispatch via `task_msg`.
+  taskMsgAllow: string[]
   relations: {
     parental: Parental
   }
@@ -243,7 +251,7 @@ export type MsgFindChildrenFn = (
 ) => Promise<FindChildrenResult>
 export type MsgCreateTaskRunFn = (
   msg: CreateTaskRunInput,
-) => Promise<CreateTaskRunResult>
+) => Promise<CreateTaskRunResult | InvalidResult>
 export type MsgTaskExecuteFn = (
   msg: TaskExecuteInput,
 ) => Promise<TaskExecuteResult>
