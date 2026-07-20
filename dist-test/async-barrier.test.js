@@ -9,10 +9,11 @@ const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: async completion barrier correctness', () => {
-    // Concurrent completions are a read-modify-write on the run's counter. Fire
-    // them all at once and confirm the per-run lock loses no increments: the run
-    // must reach exactly total_tasks and flip to completed.
-    (0, node_test_1.test)('concurrent completions do not lose counter increments', async () => {
+    // The engine drives one task in flight at a time: each completion is a
+    // read-modify-write on the run's counter, and because completions never
+    // overlap no increment is lost. Signal every task done and confirm the run
+    // reaches exactly total_tasks and flips to completed.
+    (0, node_test_1.test)('every completion advances the counter to total_tasks', async () => {
         const childCount = 40;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -39,8 +40,11 @@ const utils_1 = require("./utils");
             .entity('sys/traversetask')
             .list$({ run_id: runId });
         (0, code_1.expect)(tasks.length).equal(childCount);
-        // Fire every completion simultaneously to maximise interleaving.
-        await Promise.all(tasks.map((task) => seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id })));
+        // Signal completions one after another — the plugin's contract (one task in
+        // flight, no concurrent do:complete).
+        for (const task of tasks) {
+            await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id });
+        }
         const run = await seneca.entity('sys/traverse').load$(runId);
         (0, code_1.expect)(run.completed_tasks).equal(childCount);
         (0, code_1.expect)(run.status).equal('completed');

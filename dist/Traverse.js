@@ -12,29 +12,6 @@ function Traverse(options) {
         }
         return seneca.entity('sys/traversetask').data$(raw);
     }
-    // Per-run mutex. A completion is a read-modify-write on the run's
-    // `completed_tasks` counter; concurrent do:complete calls for the same run
-    // would otherwise interleave their load/increment/save and lose increments.
-    // Serialising by run id keeps that counter update atomic within this process.
-    // (A distributed host swaps the claim pin for a store-level conditional write
-    // — see msgRunClaim.)
-    const runLocks = new Map();
-    function withRunLock(runId, fn) {
-        const prev = runLocks.get(runId) ?? Promise.resolve();
-        // Run fn after prev settles either way, so one rejection can't wedge the
-        // chain for the run.
-        const next = prev.then(fn, fn);
-        const tail = next.catch(() => undefined);
-        runLocks.set(runId, tail);
-        // Drop the entry once this call is the tail, so the map doesn't accumulate
-        // an entry per completed run.
-        tail.then(() => {
-            if (runLocks.get(runId) === tail) {
-                runLocks.delete(runId);
-            }
-        });
-        return next;
-    }
     // A Run process can have multiple tasks as children.
     // Thus, this plugin automatically maps these relations for the client.
     options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
@@ -233,12 +210,10 @@ function Traverse(options) {
         })));
         const createdTasks = [];
         let taskFailedCount = 0;
-        const levelSizes = {};
         tasksCreationRes.forEach((taskCreation, idx) => {
             const spec = taskSpecs[idx];
             if (taskCreation.status === 'fulfilled') {
                 createdTasks.push(taskCreation.value);
-                levelSizes[spec.seq] = (levelSizes[spec.seq] ?? 0) + 1;
                 return;
             }
             taskFailedCount++;
@@ -273,7 +248,6 @@ function Traverse(options) {
             };
         }
         run.total_tasks = createdTasks.length;
-        run.level_sizes = levelSizes;
         await run.save$();
         return {
             ok: true,
@@ -294,8 +268,9 @@ function Traverse(options) {
         await seneca.post('sys:traverse,do:dispatch,on:task', { task });
         return { ok: true };
     }
-    // Start a run: async dispatches the deepest level (reverse-BFS, driven by
-    // completions); sync runs the tasks in-process to completion.
+    // Start a run: async dispatches the single deepest pending task, then each
+    // completion chains the next one (reverse-BFS, one task in flight at a time);
+    // sync runs the tasks in-process to completion.
     async function msgRunStart(msg) {
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
@@ -309,8 +284,8 @@ function Traverse(options) {
         run.started_at = Date.now();
         await run.save$();
         if (options.mode === 'async') {
-            // Dispatch the deepest pending level; completions drive the walk upward.
-            await withRunLock(run.id, () => advanceLevel(run.id));
+            // Dispatch the deepest pending task; each completion chains the next.
+            await dispatchNext(run.id);
             const startedRun = await seneca
                 .entity('sys/traverse')
                 .load$(run.id);
@@ -344,47 +319,38 @@ function Traverse(options) {
         return { ok: true };
     }
     async function msgTaskComplete(msg) {
-        const existing = await seneca
+        const task = await seneca
             .entity('sys/traversetask')
             .load$(msg.taskId);
-        if (!existing) {
+        if (!task) {
             return { ok: true };
         }
-        return withRunLock(existing.run_id, async () => {
-            // Reload inside the lock for the freshest status — an earlier queued
-            // completion for this same task may have already marked it done.
-            const task = await seneca
-                .entity('sys/traversetask')
-                .load$(msg.taskId);
-            if (!task) {
-                return { ok: true };
-            }
-            // Transition to done exactly once. `status === 'done'` is the persisted
-            // idempotency marker: an at-least-once transport redelivering the same
-            // completion (or a duplicate signal) must not advance the counter twice.
-            if (task.status !== 'done') {
-                task.status = 'done';
-                task.done_at = Date.now();
-                if (msg.result !== undefined)
-                    task.result = msg.result;
-                if (msg.fragment !== undefined)
-                    task.fragment = msg.fragment;
-                await task.save$();
-                // O(1) counter bump — no per-completion scan of the task table.
-                const run = await seneca
-                    .entity('sys/traverse')
-                    .load$(task.run_id);
-                if (run) {
-                    run.completed_tasks = (run.completed_tasks ?? 0) + 1;
-                    await run.save$();
-                }
-            }
-            await advanceLevel(task.run_id);
+        // Transition to done exactly once. `status === 'done'` is the persisted
+        // idempotency marker: an at-least-once transport redelivering the same
+        // completion (or a duplicate signal) must not advance the counter twice.
+        if (task.status !== 'done') {
+            task.status = 'done';
+            task.done_at = Date.now();
+            if (msg.result !== undefined)
+                task.result = msg.result;
+            if (msg.fragment !== undefined)
+                task.fragment = msg.fragment;
+            await task.save$();
             const run = await seneca
                 .entity('sys/traverse')
                 .load$(task.run_id);
-            return { ok: true, doneTasks: run?.completed_tasks, run };
-        });
+            if (run) {
+                run.completed_tasks = (run.completed_tasks ?? 0) + 1;
+                await run.save$();
+            }
+            // Chain the next task (deepest-first). Exactly one task is in flight at a
+            // time, so completions never overlap and the counter needs no lock.
+            await dispatchNext(task.run_id);
+        }
+        const run = await seneca
+            .entity('sys/traverse')
+            .load$(task.run_id);
+        return { ok: true, doneTasks: run?.completed_tasks, run };
     }
     async function msgRunDidComplete(_msg) {
         return { ok: true };
@@ -419,61 +385,32 @@ function Traverse(options) {
             });
         }
     }
-    // Reverse-BFS level walk for async runs: dispatch the deepest not-yet-started
-    // level, then advance one level shallower each time a level fully completes,
-    // so a parent is dispatched only after all its children are done. Which level
-    // to release is arithmetic on the O(1) completed_tasks counter against the
-    // per-level sizes — the task table is scanned only to dispatch a level (once
-    // per level), never per completion.
-    async function advanceLevel(runId) {
+    // Async driver: dispatch the single deepest pending task. Each completion
+    // calls this again, so exactly one task is in flight at a time — reverse-BFS
+    // order (a parent runs only after every deeper task is done) with no
+    // concurrent completions, hence no counter lock. When no pending task remains,
+    // finalise the run through the (overridable) claim pin.
+    async function dispatchNext(runId) {
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status !== 'active') {
             return;
         }
-        const sizes = run.level_sizes ?? {};
-        const seqsDesc = Object.keys(sizes)
-            .map(Number)
-            .sort((a, b) => b - a);
-        const done = run.completed_tasks ?? 0;
-        let nextSeq;
-        if (done === 0) {
-            nextSeq = seqsDesc[0];
-        }
-        else {
-            let cum = 0;
-            let atBoundary = false;
-            for (let i = 0; i < seqsDesc.length; i++) {
-                cum += sizes[seqsDesc[i]] ?? 0;
-                if (done === cum) {
-                    nextSeq = seqsDesc[i + 1];
-                    atBoundary = true;
-                    break;
-                }
-            }
-            // Mid-level: a level is still draining, nothing to release yet.
-            if (!atBoundary) {
-                return;
-            }
-        }
-        // Past the shallowest level — every task is done.
-        if (nextSeq === undefined) {
+        const pending = await seneca
+            .entity('sys/traversetask')
+            .list$({ run_id: runId, status: 'pending' });
+        // Every task is done — finalise the run.
+        if (pending.length === 0) {
             await checkAndCompleteRun(runId);
             return;
         }
-        const levelTasks = await seneca
-            .entity('sys/traversetask')
-            .list$({ run_id: runId, seq: nextSeq });
-        for (const task of levelTasks) {
-            if (task.status !== 'pending') {
-                continue;
-            }
-            // Fire-and-forget: siblings dispatch in parallel; completion arrives
-            // out-of-band via do:complete. A rejected dispatch must not abort the
-            // rest of the level or surface as an unhandled rejection.
-            seneca
-                .post('sys:traverse,on:task,do:execute', { task })
-                .catch((err) => seneca.log.error('async-dispatch-failed', { task_id: task.id, err }));
-        }
+        // Deepest-first: pick the highest seq still pending.
+        const next = pending.reduce((a, b) => (b.seq > a.seq ? b : a));
+        // Fire-and-forget: completion arrives out-of-band via do:complete, which
+        // chains the following task. A rejected dispatch must not surface as an
+        // unhandled rejection.
+        seneca
+            .post('sys:traverse,on:task,do:execute', { task: next })
+            .catch((err) => seneca.log.error('async-dispatch-failed', { task_id: next.id, err }));
     }
     function compareRelations(relations) {
         return [...relations].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }) ||

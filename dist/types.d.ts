@@ -39,7 +39,6 @@ export type RunEntity = {
     status: 'created' | 'active' | 'completed' | 'stopped';
     total_tasks: number;
     completed_tasks: number;
-    level_sizes: Record<string, number>;
     started_at?: Timestamp;
     completed_at?: Timestamp;
 } & Entity;
