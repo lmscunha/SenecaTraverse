@@ -1,6 +1,25 @@
 "use strict";
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 Object.defineProperty(exports, "__esModule", { value: true });
+const shape_1 = require("shape");
+// Message property schemas (shape). Seneca bundles its own gubu, so shape nodes
+// can't be embedded in the `.message()` arg schema — validate the msg at handler
+// entry instead. `Open` allows Seneca's own meta fields through.
+const shapeFindDeps = (0, shape_1.Shape)((0, shape_1.Open)({ rootEntity: (0, shape_1.Optional)(String) }));
+const shapeFindChildren = (0, shape_1.Shape)((0, shape_1.Open)({ rootEntity: (0, shape_1.Optional)(String), rootEntityId: String }));
+const shapeCreate = (0, shape_1.Shape)((0, shape_1.Open)({
+    rootEntity: (0, shape_1.Optional)(String),
+    rootEntityId: String,
+    taskMsg: String,
+}));
+const shapeTaskExecute = (0, shape_1.Shape)((0, shape_1.Open)({ task: Object }));
+const shapeDispatch = (0, shape_1.Shape)((0, shape_1.Open)({ task: Object }));
+const shapeRunStart = (0, shape_1.Shape)((0, shape_1.Open)({ runId: String }));
+const shapeRunStop = (0, shape_1.Shape)((0, shape_1.Open)({ runId: String }));
+// result/fragment are optional and any-typed; Open passes them through.
+const shapeTaskComplete = (0, shape_1.Shape)((0, shape_1.Open)({ taskId: String }));
+const shapeRunDidComplete = (0, shape_1.Shape)((0, shape_1.Open)({ run: Object }));
+const shapeRunClaim = (0, shape_1.Shape)((0, shape_1.Open)({ run: Object }));
 function Traverse(options) {
     const seneca = this;
     // Rebuild a live entity from a plain object (a task arriving over a transport
@@ -20,35 +39,25 @@ function Traverse(options) {
             ['sys/traverse', 'sys/traversetask'],
         ],
     };
+    // The `.message()` arg schema (native constructors) drives Seneca's routing
+    // validation and the generated docs. The shape* validators above additionally
+    // type each message's properties at handler entry (shape nodes can't be
+    // embedded in Seneca's bundled-gubu message schema).
     seneca
         .fix('sys:traverse')
         .message('find:deps', {}, msgFindDeps)
-        .message('find:children', {
-        rootEntityId: String,
-    }, msgFindChildren)
-        .message('on:run,do:create', {
-        rootEntityId: String,
-        taskMsg: String,
-    }, msgCreateTaskRun)
-        .message('on:task,do:execute', {
-        task: Object,
-    }, msgTaskExecute)
-        .message('do:dispatch,on:task', {
-        task: Object,
-    }, msgDispatch)
-        .message('on:run,do:start', {
-        runId: String,
-    }, msgRunStart)
-        .message('on:run,do:stop', {
-        runId: String,
-    }, msgRunStop)
-        .message('on:task,do:complete', {
-        taskId: String,
-    }, msgTaskComplete)
+        .message('find:children', { rootEntityId: String }, msgFindChildren)
+        .message('on:run,do:create', { rootEntityId: String, taskMsg: String }, msgCreateTaskRun)
+        .message('on:task,do:execute', { task: Object }, msgTaskExecute)
+        .message('do:dispatch,on:task', { task: Object }, msgDispatch)
+        .message('on:run,do:start', { runId: String }, msgRunStart)
+        .message('on:run,do:stop', { runId: String }, msgRunStop)
+        .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
         .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
         .message('on:run,do:claim', { run: Object }, msgRunClaim);
     // Entity pairs from a root, breadth-first, sorted by level then name.
     async function msgFindDeps(msg) {
+        shapeFindDeps(msg);
         const allRelations = options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const deps = [];
@@ -89,6 +98,7 @@ function Traverse(options) {
     }
     // All child instances with their parent relationship.
     async function msgFindChildren(msg) {
+        shapeFindChildren(msg);
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
         const customRef = options.customRef;
@@ -139,6 +149,7 @@ function Traverse(options) {
     }
     // Create a run and one task per child entity (topological order).
     async function msgCreateTaskRun(msg) {
+        shapeCreate(msg);
         const taskMsg = msg.taskMsg;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
@@ -243,6 +254,7 @@ function Traverse(options) {
     }
     // Execute a single Run task.
     async function msgTaskExecute(msg) {
+        shapeTaskExecute(msg);
         const task = createTaskEntity(msg.task);
         if (task.status == 'done' || task.status == 'dispatched') {
             return { ok: true };
@@ -256,6 +268,7 @@ function Traverse(options) {
     // Start a run: dispatch the deepest pending task and return; each completion
     // chains the next (reverse order, one task in flight at a time).
     async function msgRunStart(msg) {
+        shapeRunStart(msg);
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
@@ -275,6 +288,7 @@ function Traverse(options) {
     }
     // Stop a run: halts dispatch of the next pending task.
     async function msgRunStop(msg) {
+        shapeRunStop(msg);
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
@@ -291,11 +305,13 @@ function Traverse(options) {
     // overrides this to enqueue. Either way the handler/worker posts do:complete
     // when the work is done, which chains the next task.
     async function msgDispatch(msg) {
+        shapeDispatch(msg);
         const task = createTaskEntity(msg.task);
         await seneca.post(task.task_msg, { task });
         return { ok: true };
     }
     async function msgTaskComplete(msg) {
+        shapeTaskComplete(msg);
         const task = await seneca
             .entity('sys/traversetask')
             .load$(msg.taskId);
@@ -326,12 +342,14 @@ function Traverse(options) {
             .load$(task.run_id);
         return { ok: true, doneTasks: run?.completed_tasks, run };
     }
-    async function msgRunDidComplete(_msg) {
+    async function msgRunDidComplete(msg) {
+        shapeRunDidComplete(msg);
         return { ok: true };
     }
     // Overridable: a distributed host swaps in a store-level CAS so the run
     // completes exactly once.
     async function msgRunClaim(msg) {
+        shapeRunClaim(msg);
         const run = await seneca.entity('sys/traverse').load$(msg.run.id);
         if (!run || run.status !== 'active') {
             return { ok: true, claimed: false, run };
@@ -357,18 +375,23 @@ function Traverse(options) {
             });
         }
     }
-    // Dispatch the deepest pending task, or finalise the run when none remain.
-    // One query — filtered to the run, deepest-first, one row — never scans the
-    // whole task table. Fire-and-forget: completion arrives via do:complete, which
-    // chains the next, keeping exactly one task in flight (so no counter lock).
+    // Dispatch the next pending task, or finalise the run when none remain. One
+    // query — filtered to the run, ordered by seq, one row — never scans the whole
+    // task table. `reverse` picks the direction: deepest-first (-1) or, by
+    // default, shallowest-first (1, topological). Fire-and-forget: completion
+    // arrives via do:complete, which chains the next, keeping exactly one task in
+    // flight (so no counter lock).
     async function dispatchNext(runId) {
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status !== 'active') {
             return;
         }
-        const [next] = await seneca
-            .entity('sys/traversetask')
-            .list$({ run_id: runId, status: 'pending', sort$: { seq: -1 }, limit$: 1 });
+        const [next] = await seneca.entity('sys/traversetask').list$({
+            run_id: runId,
+            status: 'pending',
+            sort$: { seq: options.reverse ? -1 : 1 },
+            limit$: 1,
+        });
         if (!next) {
             await checkAndCompleteRun(runId);
             return;
@@ -394,6 +417,7 @@ const defaults = {
     debug: false,
     rootExecute: true,
     rootEntity: 'sys/user',
+    reverse: false,
     taskMsgAllow: [],
     relations: {
         parental: [],

@@ -160,10 +160,10 @@ const utils_1 = require("./utils");
         // Sequential: no two tasks complete at the same instant.
         const timestamps = tasks.map((t) => t.done_at);
         (0, code_1.expect)(new Set(timestamps).size).equal(timestamps.length);
-        // Reverse order: deeper tasks (higher seq) complete before shallower ones.
+        // Topological order (default): shallower tasks (lower seq) complete first.
         const byCompletion = [...tasks].sort((a, b) => a.done_at - b.done_at);
         for (let i = 1; i < byCompletion.length; i++) {
-            (0, code_1.expect)(byCompletion[i].seq <= byCompletion[i - 1].seq).equal(true);
+            (0, code_1.expect)(byCompletion[i].seq >= byCompletion[i - 1].seq).equal(true);
         }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
@@ -256,10 +256,10 @@ const utils_1 = require("./utils");
         for (const task of tasks) {
             (0, code_1.expect)(task.status).equal('done');
         }
-        // Reverse order: each deeper task completes before its parent.
+        // Topological order (default): each parent completes before its children.
         const bySeq = [...tasks].sort((a, b) => a.seq - b.seq);
         for (let i = 1; i < bySeq.length; i++) {
-            (0, code_1.expect)(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true);
+            (0, code_1.expect)(bySeq[i].done_at > bySeq[i - 1].done_at).equal(true);
         }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
@@ -528,6 +528,7 @@ const utils_1 = require("./utils");
         const executed = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
+            reverse: true,
             relations: {
                 parental: [
                     ['foo/e0', 'foo/e1'],
@@ -584,6 +585,7 @@ const utils_1 = require("./utils");
         const dispatched = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
+            reverse: true,
             relations: {
                 parental: [['foo/b0', 'foo/b1']],
             },
@@ -683,10 +685,10 @@ const utils_1 = require("./utils");
             (0, code_1.expect)(task.status).equal('done');
         });
         (0, code_1.expect)(tasksRestart.map((t) => t.id).sort()).equal(tasksRunStart.map((t) => t.id).sort());
-        // Reverse order: each deeper task completes before its parent.
+        // Topological order (default): each parent completes before its children.
         const bySeq = [...tasksRestart].sort((a, b) => a.seq - b.seq);
         for (let i = 1; i < bySeq.length; i++) {
-            (0, code_1.expect)(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true);
+            (0, code_1.expect)(bySeq[i].done_at > bySeq[i - 1].done_at).equal(true);
         }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
