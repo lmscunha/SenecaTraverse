@@ -58,7 +58,6 @@ export type TraverseOptionsFull = {
     debug: boolean;
     rootExecute: boolean;
     rootEntity: EntityID;
-    mode: 'sync' | 'async';
     taskMsgAllow: string[];
     relations: {
         parental: Parental;

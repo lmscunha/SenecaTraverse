@@ -9,16 +9,16 @@ const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: atomic rollback', () => {
-    (0, node_test_1.test)('run-completes-through-sync-loop', async () => {
+    (0, node_test_1.test)('run-completes', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: { parental: [['foo/s0', 'foo/s1']] },
         })
             .message('aim:task,run:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -38,9 +38,9 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
-    (0, node_test_1.test)('stop-halts-the-sync-loop', async () => {
-        // A stop mid-run must halt the sync loop: not every task dispatches and the
-        // run ends 'stopped', not 'completed'.
+    (0, node_test_1.test)('stop-halts-the-run', async () => {
+        // A stop mid-run halts dispatch: not every task runs and the run ends
+        // 'stopped', not 'completed'.
         const dispatched = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -56,9 +56,9 @@ const utils_1 = require("./utils");
             dispatched.push(msg.task.child_canon);
             const taskEnt = msg.task;
             await (0, utils_1.sleep)(5);
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -134,9 +134,9 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,rollback:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();

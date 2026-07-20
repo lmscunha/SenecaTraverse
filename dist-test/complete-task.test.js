@@ -274,7 +274,6 @@ const utils_1 = require("./utils");
         let didCompleteRun = null;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: {
                 parental: [
@@ -375,7 +374,6 @@ const utils_1 = require("./utils");
         let didCompleteRun = null;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: { parental: [['foo/j0', 'foo/j1']] },
         })

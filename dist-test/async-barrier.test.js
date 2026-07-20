@@ -17,7 +17,6 @@ const utils_1 = require("./utils");
         const childCount = 40;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: { parental: [['race/root', 'race/child']] },
         })
@@ -54,7 +53,6 @@ const utils_1 = require("./utils");
     (0, node_test_1.test)('duplicate completion signals do not overcount', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: { parental: [['dup/root', 'dup/child']] },
         })

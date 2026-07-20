@@ -34,8 +34,9 @@ const utils_1 = require("./utils");
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task;
             // console.log('task id: ', taskEnt.id)
-            taskEnt.status = 'done';
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true, a: 1 };
         });
         await seneca.ready();
@@ -105,9 +106,9 @@ const utils_1 = require("./utils");
             // Simulate some async work to increase chance of race conditions
             await (0, utils_1.sleep)(Math.random() * 10);
             // Mark task as done
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -148,7 +149,7 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(startRunRes.ok).equal(true);
         // Wait for all tasks to complete
         // TODO: improve async validation
-        await (0, utils_1.sleep)(200);
+        await (0, utils_1.sleep)(500);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -156,15 +157,14 @@ const utils_1 = require("./utils");
         for (const task of tasks) {
             (0, code_1.expect)(task.status).equal('done');
         }
-        for (let i = 1; i < tasks.length; i++) {
-            const prevTask = tasks[i - 1];
-            const currentTask = tasks[i];
-            const isSequential = currentTask.done_at >= prevTask.done_at;
-            (0, code_1.expect)(isSequential).equal(true);
-        }
+        // Sequential: no two tasks complete at the same instant.
         const timestamps = tasks.map((t) => t.done_at);
-        const uniqueTimestamps = new Set(timestamps);
-        (0, code_1.expect)(uniqueTimestamps.size).equal(timestamps.length);
+        (0, code_1.expect)(new Set(timestamps).size).equal(timestamps.length);
+        // Reverse order: deeper tasks (higher seq) complete before shallower ones.
+        const byCompletion = [...tasks].sort((a, b) => a.done_at - b.done_at);
+        for (let i = 1; i < byCompletion.length; i++) {
+            (0, code_1.expect)(byCompletion[i].seq <= byCompletion[i - 1].seq).equal(true);
+        }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
@@ -173,9 +173,9 @@ const utils_1 = require("./utils");
             .use(__1.default)
             .message('aim:task,empty:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -220,9 +220,9 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,deep:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -248,7 +248,7 @@ const utils_1 = require("./utils");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, utils_1.sleep)(150);
+        await (0, utils_1.sleep)(300);
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
@@ -256,10 +256,10 @@ const utils_1 = require("./utils");
         for (const task of tasks) {
             (0, code_1.expect)(task.status).equal('done');
         }
-        // Verify strict sequential order
-        for (let i = 1; i < tasks.length; i++) {
-            const isSequential = tasks[i].done_at > tasks[i - 1].done_at;
-            (0, code_1.expect)(isSequential).equal(true);
+        // Reverse order: each deeper task completes before its parent.
+        const bySeq = [...tasks].sort((a, b) => a.seq - b.seq);
+        for (let i = 1; i < bySeq.length; i++) {
+            (0, code_1.expect)(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true);
         }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
@@ -278,8 +278,9 @@ const utils_1 = require("./utils");
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task;
             // console.log('task id: ', taskEnt.id)
-            taskEnt.status = 'done';
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true, a: 1 };
         });
         await seneca.ready();
@@ -326,9 +327,9 @@ const utils_1 = require("./utils");
             .message('aim:task,deep:test', async function (msg) {
             const taskEnt = msg.task;
             await (0, utils_1.sleep)(Math.random() * 15);
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -351,11 +352,14 @@ const utils_1 = require("./utils");
         await seneca.post('sys:traverse,on:run,do:stop', {
             runId: runEnt.id,
         });
+        // Let the in-flight task settle; the chain must not advance past stop.
+        await (0, utils_1.sleep)(60);
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        const lastTask = tasks[tasks.length - 1];
-        (0, code_1.expect)(lastTask.status).equal('pending');
+        // Stop halts dispatch, so tasks remain pending and the run never completes.
+        const pending = tasks.filter((t) => t.status === 'pending');
+        (0, code_1.expect)(pending.length >= 1).equal(true);
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('stopped');
     });
@@ -372,9 +376,9 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,deep:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -389,26 +393,20 @@ const utils_1 = require("./utils");
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        const flipTaskState = (state) => state === 'done' ? 'failed' : 'done';
-        tasks.forEach(async (task) => {
-            // save incomplete state
-            const state = flipTaskState('done');
-            task.status = state;
-            await task.save$();
-        });
-        // run the same process again to complete all tasks
+        const originalIds = tasks.map((t) => t.id).sort();
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, utils_1.sleep)(100);
+        await (0, utils_1.sleep)(200);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        // Verify all done
+        // Verify all done, and no new tasks were created.
         tasksRestart.forEach((task) => {
             (0, code_1.expect)(task.status).equal('done');
         });
+        (0, code_1.expect)(tasksRestart.map((t) => t.id).sort()).equal(originalIds);
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
@@ -416,7 +414,6 @@ const utils_1 = require("./utils");
         let executionCount = 0;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             relations: {
                 parental: [
                     ['foo/a0', 'foo/a1'],
@@ -464,7 +461,6 @@ const utils_1 = require("./utils");
     (0, node_test_1.test)('async-mode-completes-only-after-all-tasks-done', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             relations: {
                 parental: [['foo/c0', 'foo/c1']],
             },
@@ -510,7 +506,6 @@ const utils_1 = require("./utils");
     });
     (0, node_test_1.test)('async-mode-empty-run-completes-immediately', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: { parental: [] },
         });
@@ -533,7 +528,6 @@ const utils_1 = require("./utils");
         const executed = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             relations: {
                 parental: [
                     ['foo/e0', 'foo/e1'],
@@ -576,7 +570,7 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('async-mode-complete-unknown-task', async () => {
-        const seneca = (0, utils_1.makeSeneca)().use(__1.default, { mode: 'async' });
+        const seneca = (0, utils_1.makeSeneca)().use(__1.default);
         await seneca.ready();
         // Idempotent: a completion for a missing task is a no-op ok — an
         // at-least-once transport may redeliver after cleanup, and that must not
@@ -590,7 +584,6 @@ const utils_1 = require("./utils");
         const dispatched = [];
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             relations: {
                 parental: [['foo/b0', 'foo/b1']],
             },
@@ -638,9 +631,11 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,done:test', async function (msg) {
             const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
+            // Delay so a stop issued right after start lands before completion.
+            await (0, utils_1.sleep)(20);
+            await this.post('sys:traverse,on:task,do:complete', {
+                taskId: taskEnt.id,
+            });
             return { ok: true };
         });
         await seneca.ready();
@@ -667,8 +662,9 @@ const utils_1 = require("./utils");
         const tasksRunStop = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        const lastTask = tasksRunStop[tasksRunStop.length - 1];
-        (0, code_1.expect)(lastTask.status).equal('pending');
+        // Stop halts dispatch: tasks remain pending, the run does not complete.
+        const pending = tasksRunStop.filter((t) => t.status === 'pending');
+        (0, code_1.expect)(pending.length >= 1).equal(true);
         const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(runStopRes.status).equal('stopped');
         // run the same process again
@@ -676,22 +672,21 @@ const utils_1 = require("./utils");
             runId: runEnt.id,
         });
         // TODO: improve async validation
-        await (0, utils_1.sleep)(100);
+        await (0, utils_1.sleep)(200);
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
         // number of tasks shouldn't change
         (0, code_1.expect)(tasksRestart.length).equal(tasksRunStart.length);
         // Verify all done
-        tasksRestart.forEach((task, idx) => {
+        tasksRestart.forEach((task) => {
             (0, code_1.expect)(task.status).equal('done');
-            // verity no new task was created
-            (0, code_1.expect)(task.id).equal(tasksRunStart[idx].id);
         });
-        // Verify strict sequential order
-        for (let i = 1; i < tasksRestart.length; i++) {
-            const isSequential = tasksRestart[i].done_at > tasksRestart[i - 1].done_at;
-            (0, code_1.expect)(isSequential).equal(true);
+        (0, code_1.expect)(tasksRestart.map((t) => t.id).sort()).equal(tasksRunStart.map((t) => t.id).sort());
+        // Reverse order: each deeper task completes before its parent.
+        const bySeq = [...tasksRestart].sort((a, b) => a.seq - b.seq);
+        for (let i = 1; i < bySeq.length; i++) {
+            (0, code_1.expect)(bySeq[i].done_at < bySeq[i - 1].done_at).equal(true);
         }
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');

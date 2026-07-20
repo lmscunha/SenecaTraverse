@@ -17,7 +17,6 @@ const utils_1 = require("./utils");
     async function measureCompletionScans(childCount) {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
-            mode: 'async',
             rootExecute: false,
             relations: { parental: [['perf/root', 'perf/child']] },
         })
