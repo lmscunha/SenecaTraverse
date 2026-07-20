@@ -42,7 +42,6 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 * `rootExecute` : boolean
 * `rootEntity` : string
 * `mode` : string
-* `scope` : string
 * `taskMsgAllow` : array
 * `relations` : object
 * `customRef` : object
@@ -75,14 +74,6 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
   Delivery is at-least-once: `do:complete` is idempotent (the persisted `done`
   status absorbs redelivery), but a task may be dispatched more than once at a
   level boundary, so `do:dispatch` targets and their workers must be idempotent.
-
-### Scope: `scope`
-
-- **`principal`** (default): entity access uses the calling Seneca instance,
-  honouring its principal-scoping.
-- **`root`**: entity access uses `seneca.root`, bypassing principal-scoping so a
-  run can read/write entities owned by other principals — e.g. a support-triggered
-  run acting on another user's data.
 
 ### Atomic create
 

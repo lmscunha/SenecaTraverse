@@ -7,13 +7,13 @@ import Traverse from '..'
 
 import { makeSeneca, sleep } from './utils'
 
-describe('Traverse: scope option + atomic rollback', () => {
-  test('scope-principal-default', async () => {
+describe('Traverse: atomic rollback', () => {
+  test('run-completes-through-sync-loop', async () => {
     const seneca = makeSeneca()
       .use(Traverse, {
         relations: { parental: [['foo/s0', 'foo/s1']] },
       })
-      .message('aim:task,scope:test', async function (this: any, msg: any) {
+      .message('aim:task,run:test', async function (this: any, msg: any) {
         const taskEnt = msg.task
         taskEnt.status = 'done'
         taskEnt.done_at = Date.now()
@@ -28,50 +28,12 @@ describe('Traverse: scope option + atomic rollback', () => {
     const createRes = await seneca.post('sys:traverse,on:run,do:create', {
       rootEntity: 'foo/s0',
       rootEntityId: 'root1',
-      taskMsg: 'aim:task,scope:test',
+      taskMsg: 'aim:task,run:test',
     })
 
     expect(createRes.ok).equal(true)
     expect(createRes.tasksCreated).equal(2) // root + child
     expect(createRes.tasksFailed).equal(0)
-
-    await seneca.post('sys:traverse,on:run,do:start', {
-      runId: createRes.run.id,
-    })
-    await sleep(50)
-
-    const run = await seneca.entity('sys/traverse').load$(createRes.run.id)
-    expect(run.status).equal('completed')
-  })
-
-  test('scope-root-option-accepted', async () => {
-    // In the test environment seneca.root === seneca, so this is a smoke test
-    // that scope:'root' does not break the plugin.
-    const seneca = makeSeneca()
-      .use(Traverse, {
-        scope: 'root',
-        relations: { parental: [['foo/r0', 'foo/r1']] },
-      })
-      .message('aim:task,root:test', async function (this: any, msg: any) {
-        const taskEnt = msg.task
-        taskEnt.status = 'done'
-        taskEnt.done_at = Date.now()
-        await taskEnt.save$()
-        return { ok: true }
-      })
-
-    await seneca.ready()
-
-    await seneca.entity('foo/r1').save$({ r0_id: 'root2' })
-
-    const createRes = await seneca.post('sys:traverse,on:run,do:create', {
-      rootEntity: 'foo/r0',
-      rootEntityId: 'root2',
-      taskMsg: 'aim:task,root:test',
-    })
-
-    expect(createRes.ok).equal(true)
-    expect(createRes.tasksCreated).equal(2)
 
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: createRes.run.id,

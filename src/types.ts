@@ -89,10 +89,6 @@ export type TraverseOptionsFull = {
   rootExecute: boolean
   rootEntity: EntityID
   mode: 'sync' | 'async'
-  // Principal scope for entity access. 'root' bypasses principal-scoping
-  // (seneca.root) so a run can read/write entities owned by other principals —
-  // e.g. a support-triggered run acting on another user's data.
-  scope: 'principal' | 'root'
   // Allowlist of task message patterns that `on:run,do:create` may schedule.
   // Empty = allow any pattern (trusted-caller assumption). Set this whenever
   // `do:create` is reachable from untrusted input to prevent arbitrary action
