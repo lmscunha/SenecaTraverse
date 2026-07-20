@@ -404,10 +404,20 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     if (taskFailedCount > 0) {
       // Any creation failure is unrecoverable: remove the created tasks and the
       // run so the caller retries from a clean state (no partial run).
-      await Promise.allSettled([
+      const rollback = await Promise.allSettled([
         ...createdTasks.map((t) => t.remove$()),
         run.remove$(),
       ])
+      // Rollback is best-effort: a failed remove$ can orphan a task or the run.
+      // Log so the leak is observable rather than silent.
+      for (const outcome of rollback) {
+        if (outcome.status === 'rejected') {
+          seneca.log.error('task-create-rollback-failed', {
+            run_id: run.id,
+            err: outcome.reason,
+          })
+        }
+      }
       return {
         ok: false,
         why: 'task-create-failed',
