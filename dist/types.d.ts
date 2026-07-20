@@ -39,7 +39,6 @@ export type RunEntity = {
     status: 'created' | 'active' | 'completed' | 'stopped';
     total_tasks: number;
     completed_tasks: number;
-    max_seq: number;
     started_at?: Timestamp;
     completed_at?: Timestamp;
 } & Entity;

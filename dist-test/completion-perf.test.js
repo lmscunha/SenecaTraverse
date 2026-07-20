@@ -8,12 +8,12 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-// Completion must not scan the task table. The async driver finds the next task
-// by walking `seq` down from `max_seq` with an indexed `load$` per level (keyed
-// lookup), never `list$`-ing all tasks. These tests assert zero task-table
-// `list$` calls during the completion phase, independent of run size — a
-// regression to per-completion scanning would make the count scale with n.
-(0, node_test_1.describe)('Traverse: completion performs no task-table scans', () => {
+// Completion must not load the whole task table. The async driver picks the
+// next task with a single query filtered to the run, ordered deepest-first and
+// limited to one row. This test asserts every task-table `list$` during the
+// completion phase returns at most one row — a regression to fetching a whole
+// level (or the whole table) per completion would return many.
+(0, node_test_1.describe)('Traverse: completion uses a bounded next-task query', () => {
     async function measureCompletionScans(childCount) {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
@@ -41,16 +41,18 @@ const utils_1 = require("./utils");
             .entity('sys/traversetask')
             .list$({ run_id: runId });
         (0, code_1.expect)(tasks.length).equal(childCount);
-        // Instrument only the completion phase: count list$ against the task table.
+        // Instrument the completion phase: record the largest task-table list$
+        // result. A bounded next-task query returns one row; a full scan returns n.
         const proto = Object.getPrototypeOf(seneca.entity('sys/traversetask'));
         const origList = proto.list$;
-        let taskListCalls = 0;
-        proto.list$ = function (...args) {
+        let maxRows = 0;
+        proto.list$ = async function (...args) {
             const canon = typeof this.canon$ === 'function' ? this.canon$({ string: true }) : '';
-            if (String(canon).includes('traversetask')) {
-                taskListCalls++;
+            const res = await origList.apply(this, args);
+            if (String(canon).includes('traversetask') && Array.isArray(res)) {
+                maxRows = Math.max(maxRows, res.length);
             }
-            return origList.apply(this, args);
+            return res;
         };
         try {
             for (const task of tasks) {
@@ -65,14 +67,14 @@ const utils_1 = require("./utils");
         const finalRun = await seneca.entity('sys/traverse').load$(runId);
         (0, code_1.expect)(finalRun.status).equal('completed');
         (0, code_1.expect)(finalRun.completed_tasks).equal(childCount);
-        return taskListCalls;
+        return maxRows;
     }
-    (0, node_test_1.test)('completion does no task-table list$ (keyed lookup, not scan)', async () => {
+    (0, node_test_1.test)('next-task query returns at most one row, independent of run size', async () => {
         const small = await measureCompletionScans(10);
         const large = await measureCompletionScans(60);
-        // The driver uses indexed load$ by seq, never list$ on the task table.
-        (0, code_1.expect)(small).equal(0);
-        (0, code_1.expect)(large).equal(0);
+        // limit$:1 — the query never loads a whole level or the whole table.
+        (0, code_1.expect)(small).most(1);
+        (0, code_1.expect)(large).most(1);
     });
 });
 //# sourceMappingURL=completion-perf.test.js.map
