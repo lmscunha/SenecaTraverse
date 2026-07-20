@@ -396,6 +396,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     }
 
     run.total_tasks = createdTasks.length
+    // Deepest level, so the async driver knows where to start walking seq down.
+    run.max_seq = createdTasks.reduce((m, t) => (t.seq > m ? t.seq : m), 0)
     await run.save$()
 
     return {
@@ -604,6 +606,11 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   // order (a parent runs only after every deeper task is done) with no
   // concurrent completions, hence no counter lock. When no pending task remains,
   // finalise the run through the (overridable) claim pin.
+  //
+  // The next task is found by walking `seq` down from `max_seq`, loading one
+  // pending row per level (an indexed key lookup, not a full-table scan): the
+  // first level with a pending task wins; an empty level drops one level
+  // shallower. Cost is bounded by tree depth, independent of task count.
   async function dispatchNext(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
@@ -611,27 +618,29 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       return
     }
 
-    const pending: TaskEntity[] = await seneca
-      .entity('sys/traversetask')
-      .list$({ run_id: runId, status: 'pending' })
+    for (let seq = run.max_seq ?? 0; seq >= 0; seq--) {
+      const next: TaskEntity = await seneca
+        .entity('sys/traversetask')
+        .load$({ run_id: runId, seq, status: 'pending' })
 
-    // Every task is done — finalise the run.
-    if (pending.length === 0) {
-      await checkAndCompleteRun(runId)
-      return
+      if (next) {
+        // Fire-and-forget: completion arrives out-of-band via do:complete, which
+        // chains the following task. A rejected dispatch must not surface as an
+        // unhandled rejection.
+        seneca
+          .post('sys:traverse,on:task,do:execute', { task: next })
+          .catch((err: unknown) =>
+            seneca.log.error('async-dispatch-failed', {
+              task_id: next.id,
+              err,
+            }),
+          )
+        return
+      }
     }
 
-    // Deepest-first: pick the highest seq still pending.
-    const next = pending.reduce((a, b) => (b.seq > a.seq ? b : a))
-
-    // Fire-and-forget: completion arrives out-of-band via do:complete, which
-    // chains the following task. A rejected dispatch must not surface as an
-    // unhandled rejection.
-    seneca
-      .post('sys:traverse,on:task,do:execute', { task: next })
-      .catch((err: unknown) =>
-        seneca.log.error('async-dispatch-failed', { task_id: next.id, err }),
-      )
+    // No pending task at any level — finalise the run.
+    await checkAndCompleteRun(runId)
   }
 
   function compareRelations(
