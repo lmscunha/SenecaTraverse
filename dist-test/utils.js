@@ -11,8 +11,15 @@ const seneca_1 = __importDefault(require("seneca"));
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-function makeSeneca(_opts = {}) {
-    const seneca = (0, seneca_1.default)({ legacy: false }).test().use('promisify').use('entity');
+function makeSeneca(opts = {}) {
+    // quiet → undead:true keeps the instance alive after a deliberately-failed
+    // entity op (the rollback test) so the awaited save$ still rejects for
+    // Promise.allSettled instead of aborting the process.
+    const senecaOpts = { legacy: false };
+    if (opts.quiet) {
+        senecaOpts.debug = { undead: true };
+    }
+    const seneca = (0, seneca_1.default)(senecaOpts).test().use('promisify').use('entity');
     return seneca;
 }
 //# sourceMappingURL=utils.js.map
