@@ -8,13 +8,13 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-(0, node_test_1.describe)('Traverse: scope option + atomic rollback', () => {
-    (0, node_test_1.test)('scope-principal-default', async () => {
+(0, node_test_1.describe)('Traverse: atomic rollback', () => {
+    (0, node_test_1.test)('run-completes-through-sync-loop', async () => {
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: { parental: [['foo/s0', 'foo/s1']] },
         })
-            .message('aim:task,scope:test', async function (msg) {
+            .message('aim:task,run:test', async function (msg) {
             const taskEnt = msg.task;
             taskEnt.status = 'done';
             taskEnt.done_at = Date.now();
@@ -26,42 +26,11 @@ const utils_1 = require("./utils");
         const createRes = await seneca.post('sys:traverse,on:run,do:create', {
             rootEntity: 'foo/s0',
             rootEntityId: 'root1',
-            taskMsg: 'aim:task,scope:test',
+            taskMsg: 'aim:task,run:test',
         });
         (0, code_1.expect)(createRes.ok).equal(true);
         (0, code_1.expect)(createRes.tasksCreated).equal(2); // root + child
         (0, code_1.expect)(createRes.tasksFailed).equal(0);
-        await seneca.post('sys:traverse,on:run,do:start', {
-            runId: createRes.run.id,
-        });
-        await (0, utils_1.sleep)(50);
-        const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
-        (0, code_1.expect)(run.status).equal('completed');
-    });
-    (0, node_test_1.test)('scope-root-option-accepted', async () => {
-        // In the test environment seneca.root === seneca, so this is a smoke test
-        // that scope:'root' does not break the plugin.
-        const seneca = (0, utils_1.makeSeneca)()
-            .use(__1.default, {
-            scope: 'root',
-            relations: { parental: [['foo/r0', 'foo/r1']] },
-        })
-            .message('aim:task,root:test', async function (msg) {
-            const taskEnt = msg.task;
-            taskEnt.status = 'done';
-            taskEnt.done_at = Date.now();
-            await taskEnt.save$();
-            return { ok: true };
-        });
-        await seneca.ready();
-        await seneca.entity('foo/r1').save$({ r0_id: 'root2' });
-        const createRes = await seneca.post('sys:traverse,on:run,do:create', {
-            rootEntity: 'foo/r0',
-            rootEntityId: 'root2',
-            taskMsg: 'aim:task,root:test',
-        });
-        (0, code_1.expect)(createRes.ok).equal(true);
-        (0, code_1.expect)(createRes.tasksCreated).equal(2);
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: createRes.run.id,
         });
@@ -188,4 +157,4 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(allTasks.length).equal(3);
     });
 });
-//# sourceMappingURL=scope-rollback.test.js.map
+//# sourceMappingURL=rollback.test.js.map

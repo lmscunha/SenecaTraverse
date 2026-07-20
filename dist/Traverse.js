@@ -6,14 +6,11 @@ const validateMode = (0, shape_1.Shape)((0, shape_1.Exact)('sync', 'async'));
 function Traverse(options) {
     const seneca = this;
     validateMode(options.mode);
-    // Seneca instance for entity access. scope:'root' uses seneca.root to bypass
-    // principal-scoping, so a run can reach entities owned by other principals.
-    const se = () => (options.scope === 'root' ? seneca.root : seneca);
     function createTaskEntity(raw) {
         if (raw && typeof raw.save$ === 'function') {
             return raw;
         }
-        return se().entity('sys/traversetask').data$(raw);
+        return seneca.entity('sys/traversetask').data$(raw);
     }
     // Per-run mutex. A completion is a read-modify-write on the run's
     // `completed_tasks` counter; concurrent do:complete calls for the same run
@@ -145,7 +142,7 @@ function Traverse(options) {
             }
             const childInstancesSet = parentInstanceMap.get(childCanon);
             const childQueryPromises = Array.from(parentInstances).map(async (parentId) => {
-                const childInstances = await se()
+                const childInstances = await seneca
                     .entity(childCanon)
                     .list$({
                     [foreignRef]: parentId,
@@ -187,7 +184,7 @@ function Traverse(options) {
             seneca.log.error('task-msg-not-allowed', { task_msg: taskMsg });
             return { ok: false, why: 'task-msg-not-allowed' };
         }
-        const run = await se().entity('sys/traverse').save$({
+        const run = await seneca.entity('sys/traverse').save$({
             root_entity: rootEntity,
             root_id: rootEntityId,
             status: 'created',
@@ -224,7 +221,7 @@ function Traverse(options) {
                 seq: depthByCanon.get(child.child_canon) ?? 0,
             });
         }
-        const tasksCreationRes = await Promise.allSettled(taskSpecs.map((spec) => se().entity('sys/traversetask').save$({
+        const tasksCreationRes = await Promise.allSettled(taskSpecs.map((spec) => seneca.entity('sys/traversetask').save$({
             run_id: run.id,
             parent_id: spec.parent_id,
             child_id: spec.child_id,
@@ -301,7 +298,7 @@ function Traverse(options) {
     // completions); sync runs the tasks in-process to completion.
     async function msgRunStart(msg) {
         const runId = msg.runId;
-        const run = await se().entity('sys/traverse').load$(runId);
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
             return { ok: false, why: 'run-entity-not-found' };
         }
@@ -330,7 +327,7 @@ function Traverse(options) {
     // preventing the dispatching of the next pending child task.
     async function msgRunStop(msg) {
         const runId = msg.runId;
-        const run = await se().entity('sys/traverse').load$(runId);
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
             return { ok: false, why: 'run-entity-not-found' };
         }
@@ -395,7 +392,7 @@ function Traverse(options) {
     // Overridable pin: swap in a store-level CAS (e.g. DynamoDB attribute_not_exists)
     // for atomic distributed completion so did:complete fires exactly once.
     async function msgRunClaim(msg) {
-        const run = await se().entity('sys/traverse').load$(msg.run.id);
+        const run = await seneca.entity('sys/traverse').load$(msg.run.id);
         if (!run || run.status !== 'active') {
             return { ok: true, claimed: false, run };
         }
@@ -411,7 +408,7 @@ function Traverse(options) {
     // did:complete only for the caller that wins the claim — so the hook fires
     // exactly once per run regardless of how many tasks report done concurrently.
     async function checkAndCompleteRun(runId) {
-        const run = await se().entity('sys/traverse').load$(runId);
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status !== 'active') {
             return;
         }
@@ -429,7 +426,7 @@ function Traverse(options) {
     // per-level sizes — the task table is scanned only to dispatch a level (once
     // per level), never per completion.
     async function advanceLevel(runId) {
-        const run = await se().entity('sys/traverse').load$(runId);
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status !== 'active') {
             return;
         }
@@ -489,7 +486,7 @@ function Traverse(options) {
             : entityId.slice(canonSeparatorIdx + 1);
     }
     async function completeRunDirect(runId) {
-        const run = await se().entity('sys/traverse').load$(runId);
+        const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status === 'stopped' || run.status === 'completed') {
             return;
         }
@@ -534,7 +531,6 @@ const defaults = {
     rootExecute: true,
     rootEntity: 'sys/user',
     mode: 'sync',
-    scope: 'principal',
     taskMsgAllow: [],
     relations: {
         parental: [],
