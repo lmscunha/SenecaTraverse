@@ -13,6 +13,18 @@ function Traverse(options) {
     // seneca merges `defaults` (mode: 'sync') before calling the plugin, so
     // options.mode is always set here; reject anything outside the enum.
     validateMode(options.mode);
+    // Normalize whatever an `on:task` handler receives into a live task entity.
+    // In-process the arg is already an entity — pass it through so callers keep
+    // sharing one instance (the double-dispatch guard relies on that identity).
+    // Over a real transport the arg arrives as a plain object whose `save$`/
+    // `load$` methods didn't survive serialization; rebuild a live entity from
+    // the data so persistence still works in distributed mode.
+    function hydrateTask(raw) {
+        if (raw && typeof raw.save$ === 'function') {
+            return raw;
+        }
+        return seneca.entity('sys/traversetask').data$(raw);
+    }
     // A Run process can have multiple tasks as children.
     // Thus, this plugin automatically maps these relations for the client.
     options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' };
@@ -156,12 +168,21 @@ function Traverse(options) {
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
         const isRootIncluded = options.rootExecute;
+        // `task_msg` is later dispatched as an arbitrary Seneca pattern. When an
+        // allowlist is configured, refuse patterns outside it so untrusted callers
+        // can't schedule arbitrary actions.
+        const taskMsgAllow = options.taskMsgAllow;
+        if (taskMsgAllow.length > 0 && !taskMsgAllow.includes(taskMsg)) {
+            seneca.log.error('task-msg-not-allowed', { task_msg: taskMsg });
+            return { ok: false, why: 'task-msg-not-allowed' };
+        }
         const run = await seneca.entity('sys/traverse').save$({
             root_entity: rootEntity,
             root_id: rootEntityId,
             status: 'created',
             task_msg: taskMsg,
             total_tasks: 0,
+            completed_tasks: 0,
         });
         const findChildrenRes = await seneca.post('sys:traverse,find:children', {
             rootEntity,
@@ -225,7 +246,7 @@ function Traverse(options) {
     }
     // Execute a single Run task.
     async function msgTaskExecute(msg) {
-        const task = msg.task;
+        const task = hydrateTask(msg.task);
         if (task.status == 'done' || task.status == 'dispatched') {
             return { ok: true };
         }
@@ -301,7 +322,7 @@ function Traverse(options) {
         return { ok: true, run };
     }
     async function msgDispatch(msg) {
-        const task = msg.task;
+        const task = hydrateTask(msg.task);
         await seneca.post(task.task_msg, { task });
         // Default in-process dispatch owns completion: signal the barrier once the
         // task's message returns. Hosts that override this pin to route to an
@@ -432,6 +453,7 @@ const defaults = {
     rootExecute: true,
     rootEntity: 'sys/user',
     mode: 'sync',
+    taskMsgAllow: [],
     relations: {
         parental: [],
     },
