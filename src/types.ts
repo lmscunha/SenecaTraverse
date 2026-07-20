@@ -55,9 +55,6 @@ export type RunEntity = {
   status: 'created' | 'active' | 'completed' | 'stopped'
   total_tasks: number
   completed_tasks: number
-  // Deepest task `seq` in the run. The async driver walks `seq` down from here to
-  // find the next pending task by indexed lookup, never scanning the task table.
-  max_seq: number
   started_at?: Timestamp
   completed_at?: Timestamp
 } & Entity
