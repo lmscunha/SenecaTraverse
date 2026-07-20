@@ -35,6 +35,7 @@ import type {
   FindDepsResult,
   FindChildrenResult,
   CreateTaskRunResult,
+  CreateTaskRunRollbackResult,
   TaskExecuteResult,
   DispatchResult,
   RunStartResult,
@@ -56,11 +57,15 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
   validateMode(options.mode)
 
+  // Seneca instance for entity access. scope:'root' uses seneca.root to bypass
+  // principal-scoping, so a run can reach entities owned by other principals.
+  const se = (): Seneca => (options.scope === 'root' ? seneca.root : seneca)
+
   function createTaskEntity(raw: any): TaskEntity {
     if (raw && typeof raw.save$ === 'function') {
       return raw
     }
-    return seneca.entity('sys/traversetask').data$(raw)
+    return se().entity('sys/traversetask').data$(raw)
   }
 
   // Per-run mutex. A completion is a read-modify-write on the run's
@@ -253,10 +258,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
       const childQueryPromises = Array.from(parentInstances).map(
         async (parentId) => {
-          const childInstances = await seneca.entity(childCanon).list$({
-            [foreignRef]: parentId,
-            fields$: ['id'],
-          })
+          const childInstances = await se()
+            .entity(childCanon)
+            .list$({
+              [foreignRef]: parentId,
+              fields$: ['id'],
+            })
 
           return { parentId, childInstances }
         },
@@ -291,7 +298,9 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   async function msgCreateTaskRun(
     this: Seneca,
     msg: CreateTaskRunInput,
-  ): Promise<CreateTaskRunResult | InvalidResult> {
+  ): Promise<
+    CreateTaskRunResult | CreateTaskRunRollbackResult | InvalidResult
+  > {
     const taskMsg = msg.taskMsg
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
@@ -306,7 +315,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       return { ok: false, why: 'task-msg-not-allowed' }
     }
 
-    const run: RunEntity = await seneca.entity('sys/traverse').save$({
+    const run: RunEntity = await se().entity('sys/traverse').save$({
       root_entity: rootEntity,
       root_id: rootEntityId,
       status: 'created',
@@ -358,7 +367,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     const tasksCreationRes: PromiseSettledResult<TaskEntity>[] =
       await Promise.allSettled(
         taskSpecs.map((spec) =>
-          seneca.entity('sys/traversetask').save$({
+          se().entity('sys/traversetask').save$({
             run_id: run.id,
             parent_id: spec.parent_id,
             child_id: spec.child_id,
@@ -371,7 +380,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
         ),
       )
 
-    let taskSuccessCount = 0
+    const createdTasks: TaskEntity[] = []
     let taskFailedCount = 0
     const levelSizes: Record<string, number> = {}
 
@@ -379,13 +388,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       const spec = taskSpecs[idx]!
 
       if (taskCreation.status === 'fulfilled') {
-        taskSuccessCount++
+        createdTasks.push(taskCreation.value)
         levelSizes[spec.seq] = (levelSizes[spec.seq] ?? 0) + 1
         return
       }
 
       taskFailedCount++
-      // TODO: add retry
       seneca.log.error('task-create-failed', {
         child_canon: spec.child_canon,
         child_id: spec.child_id,
@@ -393,15 +401,30 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       })
     })
 
-    run.total_tasks = taskSuccessCount
+    if (taskFailedCount > 0) {
+      // Any creation failure is unrecoverable: remove the created tasks and the
+      // run so the caller retries from a clean state (no partial run).
+      await Promise.allSettled([
+        ...createdTasks.map((t) => t.remove$()),
+        run.remove$(),
+      ])
+      return {
+        ok: false,
+        why: 'task-create-failed',
+        tasksCreated: 0,
+        tasksFailed: taskFailedCount,
+      }
+    }
+
+    run.total_tasks = createdTasks.length
     run.level_sizes = levelSizes
     await run.save$()
 
     return {
       ok: true,
       run,
-      tasksCreated: taskSuccessCount,
-      tasksFailed: taskFailedCount,
+      tasksCreated: createdTasks.length,
+      tasksFailed: 0,
     }
   }
 
@@ -433,7 +456,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   ): Promise<RunStartResult | InvalidResult> {
     const runId = msg.runId
 
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    const run: RunEntity = await se().entity('sys/traverse').load$(runId)
 
     if (!run?.status) {
       return { ok: false, why: 'run-entity-not-found' }
@@ -478,7 +501,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   ): Promise<RunStopResult | InvalidResult> {
     const runId = msg.runId
 
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    const run: RunEntity = await se().entity('sys/traverse').load$(runId)
 
     if (!run?.status) {
       return { ok: false, why: 'run-entity-not-found' }
@@ -569,7 +592,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: RunClaimInput,
   ): Promise<RunClaimResult> {
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(msg.run.id)
+    const run: RunEntity = await se().entity('sys/traverse').load$(msg.run.id)
 
     if (!run || run.status !== 'active') {
       return { ok: true, claimed: false, run }
@@ -590,7 +613,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   // did:complete only for the caller that wins the claim — so the hook fires
   // exactly once per run regardless of how many tasks report done concurrently.
   async function checkAndCompleteRun(runId: UUID): Promise<void> {
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    const run: RunEntity = await se().entity('sys/traverse').load$(runId)
 
     if (!run || run.status !== 'active') {
       return
@@ -615,7 +638,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   // per-level sizes — the task table is scanned only to dispatch a level (once
   // per level), never per completion.
   async function advanceLevel(runId: UUID): Promise<void> {
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    const run: RunEntity = await se().entity('sys/traverse').load$(runId)
 
     if (!run || run.status !== 'active') {
       return
@@ -691,7 +714,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   }
 
   async function completeRunDirect(runId: UUID): Promise<void> {
-    const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
+    const run: RunEntity = await se().entity('sys/traverse').load$(runId)
 
     if (!run || run.status === 'stopped' || run.status === 'completed') {
       return
@@ -753,6 +776,7 @@ const defaults: TraverseOptionsFull = {
   rootExecute: true,
   rootEntity: 'sys/user',
   mode: 'sync',
+  scope: 'principal',
   taskMsgAllow: [],
   relations: {
     parental: [],

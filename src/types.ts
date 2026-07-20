@@ -89,6 +89,10 @@ export type TraverseOptionsFull = {
   rootExecute: boolean
   rootEntity: EntityID
   mode: 'sync' | 'async'
+  // Principal scope for entity access. 'root' bypasses principal-scoping
+  // (seneca.root) so a run can read/write entities owned by other principals —
+  // e.g. a support-triggered run acting on another user's data.
+  scope: 'principal' | 'root'
   // Allowlist of task message patterns that `on:run,do:create` may schedule.
   // Empty = allow any pattern (trusted-caller assumption). Set this whenever
   // `do:create` is reachable from untrusted input to prevent arbitrary action
@@ -193,6 +197,14 @@ export interface CreateTaskRunResult extends BaseResult {
   tasksFailed: number
 }
 
+/** Result when on:run,do:create rolls back after task-create failures. */
+export interface CreateTaskRunRollbackResult extends BaseResult {
+  ok: false
+  why: 'task-create-failed'
+  tasksCreated: 0
+  tasksFailed: number
+}
+
 /** Result for on:task,do:execute message */
 export interface TaskExecuteResult extends BaseResult {
   ok: true
@@ -242,7 +254,7 @@ export type MsgFindChildrenFn = (
 ) => Promise<FindChildrenResult>
 export type MsgCreateTaskRunFn = (
   msg: CreateTaskRunInput,
-) => Promise<CreateTaskRunResult | InvalidResult>
+) => Promise<CreateTaskRunResult | CreateTaskRunRollbackResult | InvalidResult>
 export type MsgTaskExecuteFn = (
   msg: TaskExecuteInput,
 ) => Promise<TaskExecuteResult>
