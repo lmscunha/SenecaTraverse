@@ -425,8 +425,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
-  // Start a Run process execution,
-  // dispatching the next pending child task.
+  // Start a run: async dispatches the deepest level (reverse-BFS, driven by
+  // completions); sync runs the tasks in-process to completion.
   async function msgRunStart(
     this: Seneca,
     msg: RunStartInput,
