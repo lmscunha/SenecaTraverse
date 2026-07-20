@@ -1,1 +1,1 @@
-{"version":3,"file":"Traverse.d.ts","sourceRoot":"","sources":["../src/Traverse.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EA0CV,cAAc,EACf,MAAM,SAAS,CAAA;AAEhB,YAAY,EAAE,eAAe,EAAE,MAAM,SAAS,CAAA;wBAstBnB,cAAc;AAAzC,wBAAyC"}
+{"version":3,"file":"Traverse.d.ts","sourceRoot":"","sources":["../src/Traverse.ts"],"names":[],"mappings":"AAIA,OAAO,KAAK,EA0CV,cAAc,EACf,MAAM,SAAS,CAAA;AAEhB,YAAY,EAAE,eAAe,EAAE,MAAM,SAAS,CAAA;wBAurBnB,cAAc;AAAzC,wBAAyC"}

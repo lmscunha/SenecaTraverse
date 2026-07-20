@@ -10,8 +10,6 @@ const validateMode = (0, shape_1.Shape)((0, shape_1.Exact)('sync', 'async'));
 function Traverse(options) {
     const seneca = this;
     const { Optional } = seneca.util.Gubu;
-    // seneca merges `defaults` (mode: 'sync') before calling the plugin, so
-    // options.mode is always set here; reject anything outside the enum.
     validateMode(options.mode);
     // Normalize whatever an `on:task` handler receives into a live task entity.
     // In-process the arg is already an entity — pass it through so callers keep
@@ -314,13 +312,9 @@ function Traverse(options) {
                     err,
                 }));
             }
-            // Nothing was dispatched (zero tasks, or all already done on a restart):
-            // the fan-out never routes through the barrier, so complete here — this
-            // also emits did:complete for empty runs. In-flight dispatches are not
-            // yet done, so a live run is not falsely completed.
+            // Zero tasks or all already done: barrier never fires, so complete here.
+            // In-flight dispatches are not yet done, so a live run is not falsely completed.
             await checkAndCompleteRun(run.id);
-            // Reload so the returned run reflects a same-tick completion (empty run);
-            // a run with pending tasks stays 'active' here and completes later.
             const startedRun = await seneca
                 .entity('sys/traverse')
                 .load$(run.id);
@@ -355,12 +349,6 @@ function Traverse(options) {
         await seneca.post(task.task_msg, { task });
         return { ok: true };
     }
-    // Completion barrier — the single path both sync and async runs travel to
-    // completion. The host (or the default dispatch) signals a finished task,
-    // storing optional result/fragment; the run advances to completed once every
-    // task has reported done (via the overridable claim pin). Idempotent: a
-    // missing task returns ok — an at-least-once transport may redeliver a
-    // completion after cleanup, and that must not become a poison message.
     async function msgTaskComplete(msg) {
         const existing = await seneca
             .entity('sys/traversetask')
@@ -368,8 +356,6 @@ function Traverse(options) {
         if (!existing) {
             return { ok: true };
         }
-        // Serialise per run so the counter read-modify-write below is atomic and no
-        // concurrent completion loses an increment.
         return withRunLock(existing.run_id, async () => {
             // Reload inside the lock for the freshest status — an earlier queued
             // completion for this same task may have already marked it done.
@@ -406,21 +392,11 @@ function Traverse(options) {
             return { ok: true, doneTasks: run?.completed_tasks, run };
         });
     }
-    // Overridable hook fired exactly once per run, when it reaches completed.
-    // Default is a no-op; hosts override to trigger downstream work (e.g. post an
-    // SQS message to assemble the run's collected fragments).
     async function msgRunDidComplete(_msg) {
         return { ok: true };
     }
-    // Default completion claim: best-effort load-check-set. Transitions an active
-    // run to `completed` only when every task has reported done, and reports
-    // whether THIS call won the transition. Completion is read from the O(1)
-    // `completed_tasks` counter (maintained by do:complete) rather than scanning
-    // the task table, so a run costs constant work per completion, not O(n).
-    // Concentrating the check-and-set in one overridable pin lets hosts with
-    // concurrent distributed workers swap in a store-level conditional write
-    // (e.g. DynamoDB attribute_not_exists) so the claim is atomic and
-    // did:complete fires exactly once.
+    // Overridable pin: swap in a store-level CAS (e.g. DynamoDB attribute_not_exists)
+    // for atomic distributed completion so did:complete fires exactly once.
     async function msgRunClaim(msg) {
         const run = await seneca
             .entity('sys/traverse')
@@ -461,10 +437,6 @@ function Traverse(options) {
             ? entityId
             : entityId.slice(canonSeparatorIdx + 1);
     }
-    // Directly transition a run to completed. The sync executor owns completion
-    // in-process (its task handlers mark their own tasks done as they run), so it
-    // finalises the run here instead of routing through the counter barrier the
-    // async/distributed path uses.
     async function completeRunDirect(runId) {
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run || run.status === 'stopped' || run.status === 'completed') {
@@ -497,13 +469,10 @@ function Traverse(options) {
             if (!canProcessNextTask) {
                 continue;
             }
-            // do:execute → do:dispatch delivers the task to its handler, which marks
-            // the task done as it runs. Completion is finalised after the loop.
             await seneca.post('sys:traverse,on:task,do:execute', {
                 task,
             });
         }
-        // All tasks dispatched (or already done on a restart): finalise the run.
         await completeRunDirect(runEnt.id);
     }
 }

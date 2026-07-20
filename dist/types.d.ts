@@ -84,7 +84,6 @@ export interface CreateTaskRunInput {
 export interface TaskExecuteInput {
     task: TaskEntity;
 }
-/** Input for do:dispatch,on:task message */
 export interface DispatchInput {
     task: TaskEntity;
 }
@@ -96,17 +95,14 @@ export interface RunStartInput {
 export interface RunStopInput {
     runId: string;
 }
-/** Input for on:task,do:complete message */
 export interface TaskCompleteInput {
     taskId: string;
     result?: unknown;
     fragment?: unknown;
 }
-/** Input for on:run,did:complete message */
 export interface RunDidCompleteInput {
     run: RunEntity;
 }
-/** Input for on:run,do:claim message */
 export interface RunClaimInput {
     run: RunEntity;
 }
@@ -141,7 +137,6 @@ export interface CreateTaskRunResult extends BaseResult {
 export interface TaskExecuteResult extends BaseResult {
     ok: true;
 }
-/** Result for do:dispatch,on:task message */
 export interface DispatchResult extends BaseResult {
     ok: true;
 }
@@ -155,25 +150,14 @@ export interface RunStopResult extends BaseResult {
     ok: true;
     run: RunEntity;
 }
-/** Result for on:task,do:complete message */
 export interface TaskCompleteResult extends BaseResult {
     ok: true;
     doneTasks?: number;
     run?: RunEntity;
 }
-/** Result for on:run,did:complete message */
 export interface RunDidCompleteResult extends BaseResult {
     ok: true;
 }
-/**
- * Result for on:run,do:claim message.
- * `claimed` is true for exactly one caller — the one that won the transition to
- * `completed`. The default impl is best-effort (load-count-set); hosts running
- * concurrent distributed workers over large task volumes should override
- * on:run,do:claim with a store-level conditional write (e.g. DynamoDB
- * attribute_not_exists) to make the claim atomic and guarantee a single
- * did:complete without scanning every task.
- */
 export interface RunClaimResult extends BaseResult {
     ok: true;
     claimed: boolean;
