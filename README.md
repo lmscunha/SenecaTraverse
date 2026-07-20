@@ -50,18 +50,24 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 
 ### Execution modes
 
-- **`sync`** (default): `do:start` dispatches tasks sequentially in-process and
-  marks the run `completed` when the loop finishes.
-- **`async`**: `do:start` fans tasks out fire-and-forget and returns
-  immediately. Each task's host must signal completion with
-  `sys:traverse,on:task,do:complete` (`taskId`). The run advances to `completed`
-  once `completed_tasks` reaches `total_tasks`.
+- **`sync`** (default): `do:start` dispatches tasks sequentially in-process
+  (forward BFS) and marks the run `completed` when the loop finishes. Best for
+  in-process batch jobs where the dispatch call awaits the work.
+- **`async`**: `do:start` returns immediately and drives the tasks in
+  reverse-BFS order — the deepest level dispatches fire-and-forget first, and
+  each shallower level is released only once every deeper task is done, so a
+  parent is never processed before its children (a destructive task can't strand
+  a dangling reference). Each task's host must signal completion with
+  `sys:traverse,on:task,do:complete` (`taskId`); the run advances to `completed`
+  once `completed_tasks` reaches `total_tasks`. This is the transport-friendly
+  mode: point `do:dispatch` at a queue (e.g. SQS) and the worker posts
+  `do:complete` out-of-band.
 
   The completion counter is advanced under a per-run in-process lock, so
   concurrent completions are safe within a single process. A multi-process
   deployment that shares one store and completes tasks from different processes
-  must rely on store-level atomicity for the counter — the in-process lock does
-  not span processes.
+  must rely on store-level atomicity (override `do:claim`) — the in-process lock
+  does not span processes.
 
 ### Security: `taskMsgAllow`
 
