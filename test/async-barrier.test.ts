@@ -8,10 +8,11 @@ import Traverse from '..'
 import { makeSeneca } from './utils'
 
 describe('Traverse: async completion barrier correctness', () => {
-  // Concurrent completions are a read-modify-write on the run's counter. Fire
-  // them all at once and confirm the per-run lock loses no increments: the run
-  // must reach exactly total_tasks and flip to completed.
-  test('concurrent completions do not lose counter increments', async () => {
+  // The engine drives one task in flight at a time: each completion is a
+  // read-modify-write on the run's counter, and because completions never
+  // overlap no increment is lost. Signal every task done and confirm the run
+  // reaches exactly total_tasks and flips to completed.
+  test('every completion advances the counter to total_tasks', async () => {
     const childCount = 40
 
     const seneca = makeSeneca()
@@ -45,12 +46,11 @@ describe('Traverse: async completion barrier correctness', () => {
       .list$({ run_id: runId })
     expect(tasks.length).equal(childCount)
 
-    // Fire every completion simultaneously to maximise interleaving.
-    await Promise.all(
-      tasks.map((task: any) =>
-        seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id }),
-      ),
-    )
+    // Signal completions one after another — the plugin's contract (one task in
+    // flight, no concurrent do:complete).
+    for (const task of tasks) {
+      await seneca.post('sys:traverse,on:task,do:complete', { taskId: task.id })
+    }
 
     const run = await seneca.entity('sys/traverse').load$(runId)
     expect(run.completed_tasks).equal(childCount)

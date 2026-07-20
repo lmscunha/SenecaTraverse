@@ -55,10 +55,6 @@ export type RunEntity = {
   status: 'created' | 'active' | 'completed' | 'stopped'
   total_tasks: number
   completed_tasks: number
-  // Task count per BFS depth (`seq`), keyed by depth. Written once at create.
-  // Lets `do:complete` detect when a whole level has finished — purely from the
-  // O(1) `completed_tasks` counter — without scanning the task table.
-  level_sizes: Record<string, number>
   started_at?: Timestamp
   completed_at?: Timestamp
 } & Entity

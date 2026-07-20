@@ -56,24 +56,23 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
   (forward BFS) and marks the run `completed` when the loop finishes. Best for
   in-process batch jobs where the dispatch call awaits the work.
 - **`async`**: `do:start` returns immediately and drives the tasks in
-  reverse-BFS order — the deepest level dispatches fire-and-forget first, and
-  each shallower level is released only once every deeper task is done, so a
-  parent is never processed before its children (a destructive task can't strand
-  a dangling reference). Each task's host must signal completion with
+  reverse-BFS order, **one task in flight at a time** — the deepest pending task
+  dispatches first, and each completion chains the next-deepest, so a parent is
+  never processed before its children (a destructive task can't strand a dangling
+  reference). Each task's host must signal completion with
   `sys:traverse,on:task,do:complete` (`taskId`); the run advances to `completed`
   once `completed_tasks` reaches `total_tasks`. This is the transport-friendly
   mode: point `do:dispatch` at a queue (e.g. SQS) and the worker posts
   `do:complete` out-of-band.
 
-  The completion counter is advanced under a per-run in-process lock, so
-  concurrent completions are safe within a single process. A multi-process
-  deployment that shares one store and completes tasks from different processes
-  must rely on store-level atomicity (override `do:claim`) — the in-process lock
-  does not span processes.
+  Because exactly one task is dispatched per completion, completions never
+  overlap and the counter update needs no in-process lock. Parallel scale is the
+  transport's concern: a multi-process deployment that fans tasks out across
+  workers must make completion atomic at the store (override `do:claim`).
 
-  Delivery is at-least-once: `do:complete` is idempotent (the persisted `done`
-  status absorbs redelivery), but a task may be dispatched more than once at a
-  level boundary, so `do:dispatch` targets and their workers must be idempotent.
+  Delivery is at-least-once: `do:complete` is idempotent — the persisted `done`
+  status absorbs redelivery, so a duplicate signal never advances the counter
+  twice.
 
 ### Atomic create
 
