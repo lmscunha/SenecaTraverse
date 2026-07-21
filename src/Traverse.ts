@@ -71,15 +71,18 @@ const runMsgShape = Shape(
 )
 
 // Run `shape` before the handler; a mismatch throws, surfaced as an
-// invalid-message action error.
+// invalid-message action error. The wrapper keeps `fn`'s name so seneca-doc can
+// still map its TraverseDoc description.
 function shaped<M extends object, R>(
   shape: (msg: M) => unknown,
   fn: (this: Seneca, msg: M) => R,
 ): (this: Seneca, msg: M) => R {
-  return function(this: Seneca, msg: M) {
+  const wrapped = function (this: Seneca, msg: M) {
     shape(msg)
     return fn.call(this, msg)
   }
+  Object.defineProperty(wrapped, 'name', { value: fn.name })
+  return wrapped
 }
 
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
@@ -361,7 +364,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
       return {
         ok: false,
-        why: 'task-msg-not-allowed'
+        why: 'task-msg-not-allowed',
       }
     }
 

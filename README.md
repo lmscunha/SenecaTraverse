@@ -81,7 +81,7 @@ By default dispatch is fire-and-forget: `do:start` and `do:complete` return
 without waiting for the next task's delivery, so a run stays stoppable
 mid-flight. Set `awaitDispatch: true` to await the per-task `do:execute` post
 instead — flushing the task-row save and the transport send before the caller
-returns. This waits only for the *send* (the `task_msg` is queued, not
+returns. This waits only for the _send_ (the `task_msg` is queued, not
 processed), so exactly one task is still in flight.
 
 Enable it on a host whose execution context is torn down the moment the handler
