@@ -303,6 +303,11 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(stopRunRes.run.status).equal('stopped');
     });
     (0, node_test_1.test)('stop-run-block-completion', async () => {
+        let dispatchedCount = 0;
+        let firstDispatched;
+        const firstSeen = new Promise((r) => (firstDispatched = r));
+        let releaseFirst;
+        const gate = new Promise((r) => (releaseFirst = r));
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
@@ -316,10 +321,15 @@ const utils_1 = require("./utils");
             },
         })
             .message('aim:task,deep:test', async function (msg) {
-            const taskEnt = msg.task;
-            await (0, utils_1.sleep)(Math.random() * 15);
+            dispatchedCount++;
+            // Hold the first task until the stop has landed, so the chain cannot
+            // advance past it.
+            if (dispatchedCount === 1) {
+                firstDispatched();
+                await gate;
+            }
             await this.post('sys:traverse,on:task,do:complete', {
-                taskId: taskEnt.id,
+                taskId: msg.task.id,
             });
             return { ok: true };
         });
@@ -337,22 +347,22 @@ const utils_1 = require("./utils");
             taskMsg: 'aim:task,deep:test',
         });
         const runEnt = createTaskRes.run;
-        await seneca.post('sys:traverse,on:run,do:start', {
-            runId: runEnt.id,
-        });
+        seneca.post('sys:traverse,on:run,do:start', { runId: runEnt.id });
+        // Stop while the first task is held in its handler.
+        await firstSeen;
         await seneca.post('sys:traverse,on:run,do:stop', {
             runId: runEnt.id,
         });
-        // Let the in-flight task settle; the chain must not advance past stop.
-        await (0, utils_1.sleep)(60);
+        releaseFirst();
+        // Released task completes; dispatchNext sees a stopped run, no chaining.
+        const run = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(runEnt.id), (r) => r.completed_tasks >= 1);
+        (0, code_1.expect)(run.status).equal('stopped');
         const tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
         // Stop halts dispatch, so tasks remain pending and the run never completes.
         const pending = tasks.filter((t) => t.status === 'pending');
         (0, code_1.expect)(pending.length >= 1).equal(true);
-        const run = await seneca.entity('sys/traverse').load$(runEnt.id);
-        (0, code_1.expect)(run.status).equal('stopped');
     });
     (0, node_test_1.test)('restart-run', async () => {
         const seneca = (0, utils_1.makeSeneca)()
@@ -607,6 +617,11 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(dispatched).equal(['foo/b1', 'foo/b0']);
     });
     (0, node_test_1.test)('restart-run-previously-stopped', async () => {
+        let dispatchedCount = 0;
+        let firstDispatched;
+        const firstSeen = new Promise((r) => (firstDispatched = r));
+        let releaseFirst;
+        const gate = new Promise((r) => (releaseFirst = r));
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
@@ -617,11 +632,15 @@ const utils_1 = require("./utils");
             },
         })
             .message('aim:task,done:test', async function (msg) {
-            const taskEnt = msg.task;
-            // Delay so a stop issued right after start lands before completion.
-            await (0, utils_1.sleep)(20);
+            dispatchedCount++;
+            // Hold the first task until the stop has landed, so the chain cannot
+            // advance past it before the stop is observed.
+            if (dispatchedCount === 1) {
+                firstDispatched();
+                await gate;
+            }
             await this.post('sys:traverse,on:task,do:complete', {
-                taskId: taskEnt.id,
+                taskId: msg.task.id,
             });
             return { ok: true };
         });
@@ -636,13 +655,13 @@ const utils_1 = require("./utils");
             taskMsg: 'aim:task,done:test',
         });
         const runEnt = createTaskRes.run;
-        await seneca.post('sys:traverse,on:run,do:start', {
-            runId: runEnt.id,
-        });
         const tasksRunStart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
         (0, code_1.expect)(tasksRunStart.length).equal(3);
+        seneca.post('sys:traverse,on:run,do:start', { runId: runEnt.id });
+        // Stop while the first task is held in its handler.
+        await firstSeen;
         await seneca.post('sys:traverse,on:run,do:stop', {
             runId: runEnt.id,
         });
@@ -654,6 +673,7 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(pending.length >= 1).equal(true);
         const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(runStopRes.status).equal('stopped');
+        releaseFirst();
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });

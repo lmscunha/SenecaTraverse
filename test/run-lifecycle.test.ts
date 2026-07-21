@@ -401,6 +401,12 @@ describe('Traverse: run lifecycle', () => {
   })
 
   test('stop-run-block-completion', async () => {
+    let dispatchedCount = 0
+    let firstDispatched!: () => void
+    const firstSeen = new Promise<void>((r) => (firstDispatched = r))
+    let releaseFirst!: () => void
+    const gate = new Promise<void>((r) => (releaseFirst = r))
+
     const seneca = makeSeneca()
       .use(Traverse, {
         relations: {
@@ -414,12 +420,15 @@ describe('Traverse: run lifecycle', () => {
         },
       })
       .message('aim:task,deep:test', async function (this: any, msg: any) {
-        const taskEnt = msg.task
-
-        await sleep(Math.random() * 15)
-
+        dispatchedCount++
+        // Hold the first task until the stop has landed, so the chain cannot
+        // advance past it.
+        if (dispatchedCount === 1) {
+          firstDispatched()
+          await gate
+        }
         await this.post('sys:traverse,on:task,do:complete', {
-          taskId: taskEnt.id,
+          taskId: msg.task.id,
         })
         return { ok: true }
       })
@@ -443,28 +452,28 @@ describe('Traverse: run lifecycle', () => {
 
     const runEnt = createTaskRes.run
 
-    await seneca.post('sys:traverse,on:run,do:start', {
-      runId: runEnt.id,
-    })
+    seneca.post('sys:traverse,on:run,do:start', { runId: runEnt.id })
 
+    // Stop while the first task is held in its handler.
+    await firstSeen
     await seneca.post('sys:traverse,on:run,do:stop', {
       runId: runEnt.id,
     })
+    releaseFirst()
 
-    // Let the in-flight task settle; the chain must not advance past stop.
-    await sleep(60)
+    // Released task completes; dispatchNext sees a stopped run, no chaining.
+    const run = await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.completed_tasks >= 1,
+    )
+    expect(run.status).equal('stopped')
 
     const tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
     })
-
     // Stop halts dispatch, so tasks remain pending and the run never completes.
     const pending = tasks.filter((t: any) => t.status === 'pending')
     expect(pending.length >= 1).equal(true)
-
-    const run = await seneca.entity('sys/traverse').load$(runEnt.id)
-
-    expect(run.status).equal('stopped')
   })
 
   test('restart-run', async () => {
@@ -802,6 +811,12 @@ describe('Traverse: run lifecycle', () => {
   })
 
   test('restart-run-previously-stopped', async () => {
+    let dispatchedCount = 0
+    let firstDispatched!: () => void
+    const firstSeen = new Promise<void>((r) => (firstDispatched = r))
+    let releaseFirst!: () => void
+    const gate = new Promise<void>((r) => (releaseFirst = r))
+
     const seneca = makeSeneca()
       .use(Traverse, {
         relations: {
@@ -812,12 +827,15 @@ describe('Traverse: run lifecycle', () => {
         },
       })
       .message('aim:task,done:test', async function (this: any, msg: any) {
-        const taskEnt = msg.task
-
-        // Delay so a stop issued right after start lands before completion.
-        await sleep(20)
+        dispatchedCount++
+        // Hold the first task until the stop has landed, so the chain cannot
+        // advance past it before the stop is observed.
+        if (dispatchedCount === 1) {
+          firstDispatched()
+          await gate
+        }
         await this.post('sys:traverse,on:task,do:complete', {
-          taskId: taskEnt.id,
+          taskId: msg.task.id,
         })
         return { ok: true }
       })
@@ -838,15 +856,15 @@ describe('Traverse: run lifecycle', () => {
 
     const runEnt = createTaskRes.run
 
-    await seneca.post('sys:traverse,on:run,do:start', {
-      runId: runEnt.id,
-    })
-
     const tasksRunStart = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
     })
     expect(tasksRunStart.length).equal(3)
 
+    seneca.post('sys:traverse,on:run,do:start', { runId: runEnt.id })
+
+    // Stop while the first task is held in its handler.
+    await firstSeen
     await seneca.post('sys:traverse,on:run,do:stop', {
       runId: runEnt.id,
     })
@@ -862,6 +880,8 @@ describe('Traverse: run lifecycle', () => {
     const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id)
 
     expect(runStopRes.status).equal('stopped')
+
+    releaseFirst()
 
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
