@@ -61,7 +61,7 @@ function Traverse(options) {
         .message('find:children', { rootEntityId: String }, msgFindChildren)
         .message('on:run,do:create', { rootEntityId: String, taskMsg: String }, msgCreateTaskRun)
         .message('on:task,do:execute', { task: Object }, shaped(taskMsgShape, msgTaskExecute))
-        .message('do:dispatch,on:task', { task: Object }, shaped(taskMsgShape, msgDispatch))
+        .message('on:task,do:dispatch', { task: Object }, shaped(taskMsgShape, msgDispatch))
         .message('on:run,do:start', { runId: String }, msgRunStart)
         .message('on:run,do:stop', { runId: String }, msgRunStop)
         .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
@@ -268,7 +268,7 @@ function Traverse(options) {
         task.status = 'dispatched';
         task.dispatched_at = Date.now();
         await task.save$();
-        await seneca.post('sys:traverse,do:dispatch,on:task', { task });
+        await seneca.post('sys:traverse,on:task,do:dispatch', { task });
         return { ok: true };
     }
     // Start a run: dispatch the first pending task (order set by the `reverse`

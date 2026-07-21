@@ -467,7 +467,7 @@ const utils_1 = require("./utils");
         await seneca.ready();
         // Override dispatch so it does NOT auto-complete: the host (this test)
         // signals each task's completion by hand, exercising the barrier gate.
-        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+        seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
             await this.post(msg.task.task_msg, { task: msg.task });
             return { ok: true };
         });
@@ -593,7 +593,7 @@ const utils_1 = require("./utils");
         // so the plugin's handler is registered during ready(). A pre-ready .message()
         // call would be overwritten by the plugin. Hosts override the same way.
         // Signal completion so the level walk advances to the next (shallower) level.
-        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+        seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
             dispatched.push(msg.task.child_canon);
             await this.post('sys:traverse,on:task,do:complete', {
                 taskId: msg.task.id,
@@ -699,7 +699,7 @@ const utils_1 = require("./utils");
                 relations: { parental: [] },
             });
             await seneca.ready();
-            seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+            seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
                 // Slow send: a fire-and-forget dispatch is still pending here.
                 await (0, utils_1.sleep)(30);
                 dispatched.push(msg.task.child_canon);

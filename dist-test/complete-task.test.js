@@ -297,7 +297,7 @@ const utils_1 = require("./utils");
             return { ok: true };
         });
         // Override dispatch to NOT auto-complete (the worker does it via task_msg).
-        seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+        seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
             const task = msg.task;
             await seneca.post(task.task_msg, { task });
             return { ok: true };
