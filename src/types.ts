@@ -87,6 +87,16 @@ export type TraverseOptionsFull = {
   // Execution order. false (default) = topological, root/shallowest first.
   // true = reverse, deepest first, so a parent runs only after its children.
   reverse: boolean
+  // Await the per-task dispatch (do:execute) instead of firing it and returning.
+  // false (default) keeps do:start/do:complete non-blocking so a run can be
+  // stopped mid-flight in-process. Set true on a host where the caller's
+  // execution context is torn down the moment it returns — an AWS Lambda SQS
+  // consumer freezes after the handler resolves, killing a fire-and-forget
+  // dispatch mid-save (fatal cmd:save timeout) so the task message is never
+  // sent and the run stalls. Awaiting flushes the task-row save + the transport
+  // send before returning. Over a real transport this waits only for the SEND
+  // (the task_msg is queued, not processed), so one task stays in flight.
+  awaitDispatch: boolean
   // Allowlist of task_msg patterns do:create may schedule. Empty = allow any
   // (trusted caller); set it when do:create is reachable from untrusted input.
   taskMsgAllow: string[]

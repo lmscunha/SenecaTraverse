@@ -566,9 +566,21 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   // Dispatch the next pending task, or finalise the run when none remain. One
   // query — filtered to the run, ordered by seq, one row — never scans the whole
   // task table. `reverse` picks the direction: deepest-first (-1) or, by
-  // default, shallowest-first (1, topological). Fire-and-forget: completion
-  // arrives via do:complete, which chains the next, keeping exactly one task in
-  // flight (so no counter lock).
+  // default, shallowest-first (1, topological). Only ONE task is dispatched per
+  // call; completion arrives out-of-band via do:complete, which chains the next,
+  // keeping exactly one task in flight (so no counter lock).
+  //
+  // Dispatch is fire-and-forget by default (do:start/do:complete return without
+  // waiting, so a run stays stoppable mid-flight). With `awaitDispatch` the
+  // do:execute post is awaited instead: do:execute marks the task dispatched and
+  // hands off to do:dispatch (which, for a transport task_msg, enqueues and
+  // returns at once — it never waits for the task to be processed), so awaiting
+  // flushes the task-row save + the transport send inside the caller's live
+  // invocation. Required on an AWS Lambda SQS consumer, whose environment
+  // freezes the moment the handler returns: a fire-and-forget dispatch would run
+  // its continuation in a torn-down context where cmd:save,sys:entity no longer
+  // resolves, time out into a fatal DEATH LOOP, and never send the task message
+  // (the run stalls with tasks stuck 'dispatched').
   async function dispatchNext(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
@@ -588,11 +600,15 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       return
     }
 
-    seneca
+    const dispatch = seneca
       .post('sys:traverse,on:task,do:execute', { task: next })
       .catch((err: unknown) =>
         seneca.log.error('dispatch-failed', { task_id: next.id, err }),
       )
+
+    if (options.awaitDispatch) {
+      await dispatch
+    }
   }
 
   function compareRelations(
@@ -621,6 +637,7 @@ const defaults: TraverseOptionsFull = {
   rootExecute: true,
   rootEntity: 'sys/user',
   reverse: false,
+  awaitDispatch: false,
   taskMsgAllow: [],
   relations: {
     parental: [],
