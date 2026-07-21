@@ -8,11 +8,8 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-// createTaskEntity is transport-agnostic: a task reaching do:execute may or may
-// not still carry its live-entity methods, depending on the transport in front
-// of the plugin. These tests pin both branches — a method-preserving transport
-// must reuse the entity as-is (no rebuild, no conflict), and a lossy transport
-// (plain JSON, e.g. AWS SQS) must be rehydrated so persistence still works.
+// createTaskEntity is transport-agnostic: reuse a method-preserving entity
+// as-is, rehydrate a lossy plain object (e.g. AWS SQS). Pin both branches.
 (0, node_test_1.describe)('Traverse: createTaskEntity transport handling', () => {
     async function setup() {
         const seneca = (0, utils_1.makeSeneca)()
@@ -39,13 +36,11 @@ const utils_1 = require("./utils");
         });
         return { seneca, run, task };
     }
-    // A transport that preserves entity methods: the live task is used directly.
-    // No rebuild, no double-wrap — proven by the entity's own save$ being the one
-    // that runs.
+    // Methods preserved: the live task is used directly, proven by its own save$
+    // running (a rebuild would not touch it).
     (0, node_test_1.test)('method-preserving transport reuses the live task entity', async () => {
         const { seneca, task } = await setup();
-        // Spy the live entity's own save$ — only invoked if createTaskEntity
-        // returned this exact instance rather than rebuilding from its data.
+        // Spy the entity's own save$ — only runs if returned as-is, not rebuilt.
         let ownSaveCalled = false;
         const originalSave = task.save$.bind(task);
         task.save$ = async function (...args) {
@@ -57,8 +52,7 @@ const utils_1 = require("./utils");
         const reloaded = await seneca.entity('sys/traversetask').load$(task.id);
         (0, code_1.expect)(reloaded.status).equal('dispatched');
     });
-    // A lossy transport (plain JSON snapshot, no methods): createTaskEntity must
-    // rehydrate a live entity so the status write still persists.
+    // Methods lost (plain JSON): must rehydrate so the status write persists.
     (0, node_test_1.test)('lossy transport (plain object) is rehydrated and persists', async () => {
         const { seneca, task } = await setup();
         const plain = { ...task.data$() };
