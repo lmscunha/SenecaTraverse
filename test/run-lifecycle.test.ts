@@ -886,4 +886,56 @@ describe('Traverse: run lifecycle', () => {
     const run = await seneca.entity('sys/traverse').load$(runEnt.id)
     expect(run.status).equal('completed')
   })
+
+  // awaitDispatch flushes the per-task do:execute (task-row save + transport
+  // send) inside the do:start await instead of firing it and returning. Observe
+  // it by making the dispatch handler slow: with awaitDispatch the dispatch has
+  // already run when do:start resolves; by default it has not.
+  test('await-dispatch-flushes-before-return', async () => {
+    async function run(awaitDispatch: boolean): Promise<string[]> {
+      const dispatched: string[] = []
+
+      const seneca = makeSeneca().use(Traverse, {
+        awaitDispatch,
+        relations: { parental: [] },
+      })
+
+      await seneca.ready()
+
+      seneca.message(
+        'sys:traverse,do:dispatch,on:task',
+        async function (this: any, msg: any) {
+          // Slow send: a fire-and-forget dispatch is still pending here.
+          await sleep(30)
+          dispatched.push(msg.task.child_canon)
+          await this.post('sys:traverse,on:task,do:complete', {
+            taskId: msg.task.id,
+          })
+          return { ok: true }
+        },
+      )
+
+      const rootEntityId = '123'
+      const rootEntity = 'foo/b0'
+
+      const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+        rootEntity,
+        rootEntityId,
+        taskMsg: 'aim:task,dispatch:test',
+      })
+
+      await seneca.post('sys:traverse,on:run,do:start', {
+        runId: createRes.run.id,
+      })
+
+      // Sampled the instant do:start returns — no sleep.
+      return dispatched
+    }
+
+    // awaitDispatch: do:start awaits the slow dispatch, so it has already run.
+    expect(await run(true)).equal(['foo/b0'])
+
+    // Default: do:start returns before the slow dispatch completes.
+    expect(await run(false)).equal([])
+  })
 })

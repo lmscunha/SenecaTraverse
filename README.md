@@ -42,6 +42,7 @@ Review the [unit tests](test/Traverse.test.ts) for more examples.
 * `rootExecute` : boolean
 * `rootEntity` : string
 * `reverse` : boolean
+* `awaitDispatch` : boolean
 * `taskMsgAllow` : array
 * `relations` : object
 * `customRef` : object
@@ -73,6 +74,20 @@ completions never overlap and no in-process lock is needed; distributed hosts
 that fan tasks out across processes override `do:claim` to make completion
 atomic at the store. Delivery is at-least-once: `do:complete` is idempotent, so a
 redelivered signal never double-counts.
+
+### Dispatch timing: `awaitDispatch`
+
+By default dispatch is fire-and-forget: `do:start` and `do:complete` return
+without waiting for the next task's delivery, so a run stays stoppable
+mid-flight. Set `awaitDispatch: true` to await the per-task `do:execute` post
+instead — flushing the task-row save and the transport send before the caller
+returns. This waits only for the *send* (the `task_msg` is queued, not
+processed), so exactly one task is still in flight.
+
+Enable it on a host whose execution context is torn down the moment the handler
+returns — e.g. an AWS Lambda SQS consumer freezes after the handler resolves,
+killing an unawaited dispatch mid-save so the task message is never sent and the
+run stalls with tasks stuck `dispatched`.
 
 ### Atomic create
 

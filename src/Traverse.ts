@@ -504,6 +504,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       await dispatchNext(task.run_id)
     }
 
+    // Reload: dispatchNext may have finalised the run (status/completed_at).
     const run: RunEntity = await seneca
       .entity('sys/traverse')
       .load$(task.run_id)
@@ -570,17 +571,12 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   // call; completion arrives out-of-band via do:complete, which chains the next,
   // keeping exactly one task in flight (so no counter lock).
   //
-  // Dispatch is fire-and-forget by default (do:start/do:complete return without
-  // waiting, so a run stays stoppable mid-flight). With `awaitDispatch` the
-  // do:execute post is awaited instead: do:execute marks the task dispatched and
-  // hands off to do:dispatch (which, for a transport task_msg, enqueues and
-  // returns at once — it never waits for the task to be processed), so awaiting
-  // flushes the task-row save + the transport send inside the caller's live
-  // invocation. Required on an AWS Lambda SQS consumer, whose environment
-  // freezes the moment the handler returns: a fire-and-forget dispatch would run
-  // its continuation in a torn-down context where cmd:save,sys:entity no longer
-  // resolves, time out into a fatal DEATH LOOP, and never send the task message
-  // (the run stalls with tasks stuck 'dispatched').
+  // Dispatch is fire-and-forget by default so a run stays stoppable mid-flight.
+  // With `awaitDispatch` the do:execute post is awaited instead, flushing the
+  // task-row save + transport send inside the caller's live invocation — needed
+  // on a host that tears down the moment it returns (e.g. an AWS Lambda SQS
+  // consumer freezes after the handler resolves, killing an unawaited dispatch
+  // mid-save so the task message is never sent and the run stalls).
   async function dispatchNext(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 
