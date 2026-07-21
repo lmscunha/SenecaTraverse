@@ -573,12 +573,17 @@ describe('Traverse: run lifecycle', () => {
     expect(elapsed).lessThan(40)
     expect(executionCount).equal(0)
 
-    // wait for tasks to complete in background
-    await sleep(200)
+    // Poll for background completion — tasks run serially (one in flight), so a
+    // fixed sleep races a slow CI. Wait up to ~2s for the run to finish.
+    let finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
+    for (let i = 0; i < 100 && finalRun.status !== 'completed'; i++) {
+      await sleep(20)
+      finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
+    }
+
     expect(executionCount).equal(3) // root + 2 children
 
     // completion barrier: run finishes once every task reports done
-    const finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
     expect(finalRun.status).equal('completed')
     expect(finalRun.completed_at).exist()
   })
