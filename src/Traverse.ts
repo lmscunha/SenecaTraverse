@@ -121,13 +121,29 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       { rootEntityId: String, taskMsg: String },
       msgCreateTaskRun,
     )
-    .message('on:task,do:execute', { task: Object }, shaped(taskMsgShape, msgTaskExecute))
-    .message('do:dispatch,on:task', { task: Object }, shaped(taskMsgShape, msgDispatch))
+    .message(
+      'on:task,do:execute',
+      { task: Object },
+      shaped(taskMsgShape, msgTaskExecute),
+    )
+    .message(
+      'do:dispatch,on:task',
+      { task: Object },
+      shaped(taskMsgShape, msgDispatch),
+    )
     .message('on:run,do:start', { runId: String }, msgRunStart)
     .message('on:run,do:stop', { runId: String }, msgRunStop)
     .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
-    .message('on:run,did:complete', { run: Object }, shaped(runMsgShape, msgRunDidComplete))
-    .message('on:run,do:claim', { run: Object }, shaped(runMsgShape, msgRunClaim))
+    .message(
+      'on:run,did:complete',
+      { run: Object },
+      shaped(runMsgShape, msgRunDidComplete),
+    )
+    .message(
+      'on:run,do:claim',
+      { run: Object },
+      shaped(runMsgShape, msgRunClaim),
+    )
 
   // Entity pairs from a root, breadth-first, sorted by level then name.
   async function msgFindDeps(
@@ -220,12 +236,10 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
       const childQueryPromises = Array.from(parentInstances).map(
         async (parentId) => {
-          const childInstances = await seneca
-            .entity(childCanon)
-            .list$({
-              [foreignRef]: parentId,
-              fields$: ['id'],
-            })
+          const childInstances = await seneca.entity(childCanon).list$({
+            [foreignRef]: parentId,
+            fields$: ['id'],
+          })
 
           return { parentId, childInstances }
         },
@@ -626,7 +640,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       ? entityId
       : entityId.slice(canonSeparatorIdx + 1)
   }
-
 }
 
 // Default options.
