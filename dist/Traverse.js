@@ -35,8 +35,13 @@ function shaped(shape, fn) {
 }
 function Traverse(options) {
     const seneca = this;
-    // Rebuild a live entity from a plain object (a task arriving over a transport
-    // loses its save$/load$ methods).
+    // A task may cross a transport before reaching a handler. Whether it keeps its
+    // live-entity methods (save$/load$) depends on the transport, and the plugin
+    // stays agnostic about which one is used: some serialize to plain JSON and
+    // strip the methods (e.g. AWS SQS), others may hand back an object that still
+    // has them. Rebuild a live entity only when the methods are missing; if they
+    // survived, return the object as-is — the save$ guard makes that a no-op, so a
+    // method-preserving transport is never double-wrapped.
     function createTaskEntity(raw) {
         if (raw && typeof raw.save$ === 'function') {
             return raw;
