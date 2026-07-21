@@ -39,8 +39,13 @@ const utils_1 = require("./utils");
     });
     (0, node_test_1.test)('stop-halts-the-run', async () => {
         // A stop mid-run halts dispatch: not every task runs and the run ends
-        // 'stopped', not 'completed'.
+        // 'stopped', not 'completed'. Hold the first task inside its handler until
+        // the stop has landed — no timing race for the chain to lose.
         const dispatched = [];
+        let firstDispatched;
+        const firstSeen = new Promise((r) => (firstDispatched = r));
+        let releaseFirst;
+        const gate = new Promise((r) => (releaseFirst = r));
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {
             relations: {
@@ -53,10 +58,14 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,stop:test', async function (msg) {
             dispatched.push(msg.task.child_canon);
-            const taskEnt = msg.task;
-            await (0, utils_1.sleep)(5);
+            // Block the first task until the test has posted do:stop, so the chain
+            // cannot advance to completion before the stop is observed.
+            if (dispatched.length === 1) {
+                firstDispatched();
+                await gate;
+            }
             await this.post('sys:traverse,on:task,do:complete', {
-                taskId: taskEnt.id,
+                taskId: msg.task.id,
             });
             return { ok: true };
         });
@@ -71,14 +80,15 @@ const utils_1 = require("./utils");
         });
         (0, code_1.expect)(createRes.tasksCreated).equal(4); // root + d1 + d2 + d3
         seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id });
-        // Stop only after at least one task has started dispatching.
-        await (0, utils_1.waitFor)(async () => dispatched.length, (n) => n >= 1);
+        // Stop while the first task is held in its handler.
+        await firstSeen;
         await seneca.post('sys:traverse,on:run,do:stop', {
             runId: createRes.run.id,
         });
-        // Settle: give any (erroneous) further dispatch a chance to appear.
-        await (0, utils_1.sleep)(100);
-        const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
+        releaseFirst();
+        // The released task completes; dispatchNext sees a stopped run and does not
+        // chain the next one.
+        const run = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createRes.run.id), (r) => r.completed_tasks >= 1);
         (0, code_1.expect)(run.status).equal('stopped');
         (0, code_1.expect)(dispatched.length).lessThan(4);
     });
