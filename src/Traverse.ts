@@ -1,5 +1,7 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
+import { Shape, Open, Exact, Min, Skip } from 'shape'
+
 import type {
   // Base Types
   Seneca,
@@ -48,6 +50,46 @@ import type {
 
 export type { TraverseOptions } from './types'
 
+// Payload shapes for messages whose `.message()` schema can only say `Object`.
+// Seneca validates each message arg with its bundled Gubu — that covers
+// required + type, but not enum membership or nested entity structure. A `task`
+// or `run` arriving over a transport is otherwise unchecked beyond "is an
+// object". These shapes add the domain constraints Gubu can't express. The
+// outer/inner `Open` let Seneca meta fields and the live entity's save$/load$
+// methods pass through untouched.
+const taskMsgShape = Shape(
+  Open({
+    task: Open({
+      run_id: String,
+      // Only read for ordering in dispatchNext, not from the message — so
+      // skippable, but non-negative when a task does carry it.
+      seq: Skip(Min(0, Number)),
+      status: Exact('pending', 'dispatched', 'done'),
+    }),
+  }),
+)
+const runMsgShape = Shape(
+  Open({
+    run: Open({
+      status: Exact('created', 'active', 'completed', 'stopped'),
+    }),
+  }),
+)
+
+// Validate a message payload with `shape` before the handler runs. Used only
+// where the constraint is richer than the native `.message()` schema (see
+// above). Shape throws a detailed ShapeError on mismatch, which Seneca surfaces
+// as an invalid-message action error.
+function shaped<M extends object, R>(
+  shape: (msg: M) => unknown,
+  fn: (this: Seneca, msg: M) => R,
+): (this: Seneca, msg: M) => R {
+  return function (this: Seneca, msg: M) {
+    shape(msg)
+    return fn.call(this, msg)
+  }
+}
+
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
 
@@ -79,13 +121,13 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       { rootEntityId: String, taskMsg: String },
       msgCreateTaskRun,
     )
-    .message('on:task,do:execute', { task: Object }, msgTaskExecute)
-    .message('do:dispatch,on:task', { task: Object }, msgDispatch)
+    .message('on:task,do:execute', { task: Object }, shaped(taskMsgShape, msgTaskExecute))
+    .message('do:dispatch,on:task', { task: Object }, shaped(taskMsgShape, msgDispatch))
     .message('on:run,do:start', { runId: String }, msgRunStart)
     .message('on:run,do:stop', { runId: String }, msgRunStop)
     .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
-    .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
-    .message('on:run,do:claim', { run: Object }, msgRunClaim)
+    .message('on:run,did:complete', { run: Object }, shaped(runMsgShape, msgRunDidComplete))
+    .message('on:run,do:claim', { run: Object }, shaped(runMsgShape, msgRunClaim))
 
   // Entity pairs from a root, breadth-first, sorted by level then name.
   async function msgFindDeps(
@@ -477,7 +519,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
   async function msgRunDidComplete(
     this: Seneca,
-    msg: RunDidCompleteInput,
+    _msg: RunDidCompleteInput,
   ): Promise<RunDidCompleteResult> {
     return { ok: true }
   }

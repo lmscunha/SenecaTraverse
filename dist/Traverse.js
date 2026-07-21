@@ -2,24 +2,37 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 Object.defineProperty(exports, "__esModule", { value: true });
 const shape_1 = require("shape");
-// Message property schemas (shape). Seneca bundles its own gubu, so shape nodes
-// can't be embedded in the `.message()` arg schema — validate the msg at handler
-// entry instead. `Open` allows Seneca's own meta fields through.
-const shapeFindDeps = (0, shape_1.Shape)((0, shape_1.Open)({ rootEntity: (0, shape_1.Optional)(String) }));
-const shapeFindChildren = (0, shape_1.Shape)((0, shape_1.Open)({ rootEntity: (0, shape_1.Optional)(String), rootEntityId: String }));
-const shapeCreate = (0, shape_1.Shape)((0, shape_1.Open)({
-    rootEntity: (0, shape_1.Optional)(String),
-    rootEntityId: String,
-    taskMsg: String,
+// Payload shapes for messages whose `.message()` schema can only say `Object`.
+// Seneca validates each message arg with its bundled Gubu — that covers
+// required + type, but not enum membership or nested entity structure. A `task`
+// or `run` arriving over a transport is otherwise unchecked beyond "is an
+// object". These shapes add the domain constraints Gubu can't express. The
+// outer/inner `Open` let Seneca meta fields and the live entity's save$/load$
+// methods pass through untouched.
+const taskMsgShape = (0, shape_1.Shape)((0, shape_1.Open)({
+    task: (0, shape_1.Open)({
+        run_id: String,
+        // Only read for ordering in dispatchNext, not from the message — so
+        // skippable, but non-negative when a task does carry it.
+        seq: (0, shape_1.Skip)((0, shape_1.Min)(0, Number)),
+        status: (0, shape_1.Exact)('pending', 'dispatched', 'done'),
+    }),
 }));
-const shapeTaskExecute = (0, shape_1.Shape)((0, shape_1.Open)({ task: Object }));
-const shapeDispatch = (0, shape_1.Shape)((0, shape_1.Open)({ task: Object }));
-const shapeRunStart = (0, shape_1.Shape)((0, shape_1.Open)({ runId: String }));
-const shapeRunStop = (0, shape_1.Shape)((0, shape_1.Open)({ runId: String }));
-// result/fragment are optional and any-typed; Open passes them through.
-const shapeTaskComplete = (0, shape_1.Shape)((0, shape_1.Open)({ taskId: String }));
-const shapeRunDidComplete = (0, shape_1.Shape)((0, shape_1.Open)({ run: Object }));
-const shapeRunClaim = (0, shape_1.Shape)((0, shape_1.Open)({ run: Object }));
+const runMsgShape = (0, shape_1.Shape)((0, shape_1.Open)({
+    run: (0, shape_1.Open)({
+        status: (0, shape_1.Exact)('created', 'active', 'completed', 'stopped'),
+    }),
+}));
+// Validate a message payload with `shape` before the handler runs. Used only
+// where the constraint is richer than the native `.message()` schema (see
+// above). Shape throws a detailed ShapeError on mismatch, which Seneca surfaces
+// as an invalid-message action error.
+function shaped(shape, fn) {
+    return function (msg) {
+        shape(msg);
+        return fn.call(this, msg);
+    };
+}
 function Traverse(options) {
     const seneca = this;
     // Rebuild a live entity from a plain object (a task arriving over a transport
@@ -39,25 +52,20 @@ function Traverse(options) {
             ['sys/traverse', 'sys/traversetask'],
         ],
     };
-    // The `.message()` arg schema (native constructors) drives Seneca's routing
-    // validation and the generated docs. The shape* validators above additionally
-    // type each message's properties at handler entry (shape nodes can't be
-    // embedded in Seneca's bundled-gubu message schema).
     seneca
         .fix('sys:traverse')
         .message('find:deps', {}, msgFindDeps)
         .message('find:children', { rootEntityId: String }, msgFindChildren)
         .message('on:run,do:create', { rootEntityId: String, taskMsg: String }, msgCreateTaskRun)
-        .message('on:task,do:execute', { task: Object }, msgTaskExecute)
-        .message('do:dispatch,on:task', { task: Object }, msgDispatch)
+        .message('on:task,do:execute', { task: Object }, shaped(taskMsgShape, msgTaskExecute))
+        .message('do:dispatch,on:task', { task: Object }, shaped(taskMsgShape, msgDispatch))
         .message('on:run,do:start', { runId: String }, msgRunStart)
         .message('on:run,do:stop', { runId: String }, msgRunStop)
         .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
-        .message('on:run,did:complete', { run: Object }, msgRunDidComplete)
-        .message('on:run,do:claim', { run: Object }, msgRunClaim);
+        .message('on:run,did:complete', { run: Object }, shaped(runMsgShape, msgRunDidComplete))
+        .message('on:run,do:claim', { run: Object }, shaped(runMsgShape, msgRunClaim));
     // Entity pairs from a root, breadth-first, sorted by level then name.
     async function msgFindDeps(msg) {
-        shapeFindDeps(msg);
         const allRelations = options.relations.parental;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const deps = [];
@@ -98,7 +106,6 @@ function Traverse(options) {
     }
     // All child instances with their parent relationship.
     async function msgFindChildren(msg) {
-        shapeFindChildren(msg);
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
         const customRef = options.customRef;
@@ -149,7 +156,6 @@ function Traverse(options) {
     }
     // Create a run and one task per child entity (topological order).
     async function msgCreateTaskRun(msg) {
-        shapeCreate(msg);
         const taskMsg = msg.taskMsg;
         const rootEntity = msg.rootEntity || options.rootEntity;
         const rootEntityId = msg.rootEntityId;
@@ -254,7 +260,6 @@ function Traverse(options) {
     }
     // Execute a single Run task.
     async function msgTaskExecute(msg) {
-        shapeTaskExecute(msg);
         const task = createTaskEntity(msg.task);
         if (task.status == 'done' || task.status == 'dispatched') {
             return { ok: true };
@@ -268,7 +273,6 @@ function Traverse(options) {
     // Start a run: dispatch the first pending task (order set by the `reverse`
     // option) and return; each completion chains the next, one task in flight.
     async function msgRunStart(msg) {
-        shapeRunStart(msg);
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
@@ -288,7 +292,6 @@ function Traverse(options) {
     }
     // Stop a run: halts dispatch of the next pending task.
     async function msgRunStop(msg) {
-        shapeRunStop(msg);
         const runId = msg.runId;
         const run = await seneca.entity('sys/traverse').load$(runId);
         if (!run?.status) {
@@ -305,13 +308,11 @@ function Traverse(options) {
     // overrides this to enqueue. Either way the handler/worker posts do:complete
     // when the work is done, which chains the next task.
     async function msgDispatch(msg) {
-        shapeDispatch(msg);
         const task = createTaskEntity(msg.task);
         await seneca.post(task.task_msg, { task });
         return { ok: true };
     }
     async function msgTaskComplete(msg) {
-        shapeTaskComplete(msg);
         const task = await seneca
             .entity('sys/traversetask')
             .load$(msg.taskId);
@@ -343,14 +344,12 @@ function Traverse(options) {
             .load$(task.run_id);
         return { ok: true, doneTasks: run?.completed_tasks, run };
     }
-    async function msgRunDidComplete(msg) {
-        shapeRunDidComplete(msg);
+    async function msgRunDidComplete(_msg) {
         return { ok: true };
     }
     // Overridable: a distributed host swaps in a store-level CAS so the run
     // completes exactly once.
     async function msgRunClaim(msg) {
-        shapeRunClaim(msg);
         const run = await seneca.entity('sys/traverse').load$(msg.run.id);
         if (!run || run.status !== 'active') {
             return { ok: true, claimed: false, run };
