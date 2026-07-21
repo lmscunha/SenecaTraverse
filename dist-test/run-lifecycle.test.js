@@ -450,11 +450,15 @@ const utils_1 = require("./utils");
         // returned before the 50 ms task delay — not awaiting tasks
         (0, code_1.expect)(elapsed).lessThan(40);
         (0, code_1.expect)(executionCount).equal(0);
-        // wait for tasks to complete in background
-        await (0, utils_1.sleep)(200);
+        // Poll for background completion — tasks run serially (one in flight), so a
+        // fixed sleep races a slow CI. Wait up to ~2s for the run to finish.
+        let finalRun = await seneca.entity('sys/traverse').load$(runEnt.id);
+        for (let i = 0; i < 100 && finalRun.status !== 'completed'; i++) {
+            await (0, utils_1.sleep)(20);
+            finalRun = await seneca.entity('sys/traverse').load$(runEnt.id);
+        }
         (0, code_1.expect)(executionCount).equal(3); // root + 2 children
         // completion barrier: run finishes once every task reports done
-        const finalRun = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(finalRun.status).equal('completed');
         (0, code_1.expect)(finalRun.completed_at).exist();
     });
