@@ -613,7 +613,7 @@ describe('Traverse: run lifecycle', () => {
     // Override dispatch so it does NOT auto-complete: the host (this test)
     // signals each task's completion by hand, exercising the barrier gate.
     seneca.message(
-      'sys:traverse,do:dispatch,on:task',
+      'sys:traverse,on:task,do:dispatch',
       async function (this: any, msg: any) {
         await this.post(msg.task.task_msg, { task: msg.task })
         return { ok: true }
@@ -776,7 +776,7 @@ describe('Traverse: run lifecycle', () => {
     // call would be overwritten by the plugin. Hosts override the same way.
     // Signal completion so the level walk advances to the next (shallower) level.
     seneca.message(
-      'sys:traverse,do:dispatch,on:task',
+      'sys:traverse,on:task,do:dispatch',
       async function (this: any, msg: any) {
         dispatched.push(msg.task.child_canon)
         await this.post('sys:traverse,on:task,do:complete', {
@@ -924,7 +924,7 @@ describe('Traverse: run lifecycle', () => {
       await seneca.ready()
 
       seneca.message(
-        'sys:traverse,do:dispatch,on:task',
+        'sys:traverse,on:task,do:dispatch',
         async function (this: any, msg: any) {
           // Slow send: a fire-and-forget dispatch is still pending here.
           await sleep(30)

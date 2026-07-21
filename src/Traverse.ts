@@ -130,7 +130,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       shaped(taskMsgShape, msgTaskExecute),
     )
     .message(
-      'do:dispatch,on:task',
+      'on:task,do:dispatch',
       { task: Object },
       shaped(taskMsgShape, msgDispatch),
     )
@@ -423,7 +423,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     task.dispatched_at = Date.now()
     await task.save$()
 
-    await seneca.post('sys:traverse,do:dispatch,on:task', { task })
+    await seneca.post('sys:traverse,on:task,do:dispatch', { task })
 
     return { ok: true }
   }

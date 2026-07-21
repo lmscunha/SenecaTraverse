@@ -379,7 +379,7 @@ describe('Traverse: complete task barrier', () => {
 
     // Override dispatch to NOT auto-complete (the worker does it via task_msg).
     seneca.message(
-      'sys:traverse,do:dispatch,on:task',
+      'sys:traverse,on:task,do:dispatch',
       async function (this: any, msg: any) {
         const task = msg.task
         await seneca.post(task.task_msg, { task })
