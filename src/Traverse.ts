@@ -105,7 +105,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   }
 
   options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
-  // Copy, don't mutate: options may share the defaults' `parental` array.
+  // New array, not push: parental may be the caller's (or shared defaults')
+  // array — mutating it would append this relation again on a second .use().
   options.relations = {
     ...options.relations,
     parental: [
