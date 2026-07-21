@@ -105,10 +105,8 @@ describe('Traverse: atomic rollback', () => {
   })
 
   test('create-run-rolls-back-all-on-partial-failure', async () => {
-    // Force one task save to fail; atomic rollback must remove every created
-    // task AND the run, returning ok:false with the failure count. A
-    // callback-style reply(err) is a caught rejection (Promise.allSettled), not
-    // a fatal process abort.
+    // Force one task save to fail; rollback must remove every created task AND
+    // the run, returning ok:false with the failure count.
     const seneca = makeSeneca({ quiet: true })
       .use(Traverse, {
         rootExecute: false,

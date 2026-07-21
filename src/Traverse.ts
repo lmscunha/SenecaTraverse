@@ -50,19 +50,13 @@ import type {
 
 export type { TraverseOptions } from './types'
 
-// Payload shapes for messages whose `.message()` schema can only say `Object`.
-// Seneca validates each message arg with its bundled Gubu — that covers
-// required + type, but not enum membership or nested entity structure. A `task`
-// or `run` arriving over a transport is otherwise unchecked beyond "is an
-// object". These shapes add the domain constraints Gubu can't express. The
-// outer/inner `Open` let Seneca meta fields and the live entity's save$/load$
-// methods pass through untouched.
+// Domain constraints (enum membership, nested entity shape) the native
+// `.message()` schema can't express. `Open` lets Seneca meta and entity methods
+// pass through.
 const taskMsgShape = Shape(
   Open({
     task: Open({
       run_id: String,
-      // Only read for ordering in dispatchNext, not from the message — so
-      // skippable, but non-negative when a task does carry it.
       seq: Skip(Min(0, Number)),
       status: Exact('pending', 'dispatched', 'done'),
     }),
@@ -76,15 +70,13 @@ const runMsgShape = Shape(
   }),
 )
 
-// Validate a message payload with `shape` before the handler runs. Used only
-// where the constraint is richer than the native `.message()` schema (see
-// above). Shape throws a detailed ShapeError on mismatch, which Seneca surfaces
-// as an invalid-message action error.
+// Run `shape` before the handler; a mismatch throws, surfaced as an
+// invalid-message action error.
 function shaped<M extends object, R>(
   shape: (msg: M) => unknown,
   fn: (this: Seneca, msg: M) => R,
 ): (this: Seneca, msg: M) => R {
-  return function (this: Seneca, msg: M) {
+  return function(this: Seneca, msg: M) {
     shape(msg)
     return fn.call(this, msg)
   }
@@ -93,10 +85,8 @@ function shaped<M extends object, R>(
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
 
-  // A task may cross a transport first; whether it keeps its save$/load$ methods
-  // depends on the transport (e.g. AWS SQS strips them to plain JSON). Rebuild
-  // only when missing — the save$ guard reuses a method-preserving entity as-is,
-  // so it's never double-wrapped.
+  // Rebuild a live entity only when the transport stripped its methods (e.g. AWS
+  // SQS delivers plain JSON); a method-preserving entity is reused as-is.
   function createTaskEntity(raw: any): TaskEntity {
     if (raw && typeof raw.save$ === 'function') {
       return raw
@@ -105,8 +95,8 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   }
 
   options.customRef = { ...options.customRef, 'sys/traversetask': 'run_id' }
-  // New array, not push: parental may be the caller's (or shared defaults')
-  // array — mutating it would append this relation again on a second .use().
+  // New array, not push: parental may be shared, so mutating would re-append on
+  // a second .use().
   options.relations = {
     ...options.relations,
     parental: [
@@ -293,8 +283,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   }
 
   // Deliver a task to its handler. Default posts in-process; a transport host
-  // overrides this to enqueue. Either way the handler/worker posts do:complete
-  // when the work is done, which chains the next task.
+  // overrides this to enqueue.
   async function msgDispatch(
     this: Seneca,
     msg: DispatchInput,
@@ -321,13 +310,21 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     if (task.status !== 'done') {
       task.status = 'done'
       task.done_at = Date.now()
-      if (msg.result !== undefined) task.result = msg.result
-      if (msg.fragment !== undefined) task.fragment = msg.fragment
+
+      if (null != msg.result) {
+        task.result = msg.result
+      }
+
+      if (null != msg.fragment) {
+        task.fragment = msg.fragment
+      }
+
       await task.save$()
 
       const run: RunEntity = await seneca
         .entity('sys/traverse')
         .load$(task.run_id)
+
       if (run) {
         run.completed_tasks = (run.completed_tasks ?? 0) + 1
         await run.save$()
@@ -358,9 +355,14 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
 
     // task_msg is dispatched as an arbitrary Seneca pattern; gate it when set.
     const taskMsgAllow = options.taskMsgAllow
+
     if (taskMsgAllow.length > 0 && !taskMsgAllow.includes(taskMsg as string)) {
       seneca.log.error('task-msg-not-allowed', { task_msg: taskMsg })
-      return { ok: false, why: 'task-msg-not-allowed' }
+
+      return {
+        ok: false,
+        why: 'task-msg-not-allowed'
+      }
     }
 
     const run: RunEntity = await seneca.entity('sys/traverse').save$({
@@ -452,6 +454,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
         ...createdTasks.map((t) => t.remove$()),
         run.remove$(),
       ])
+
       // Best-effort: log a failed removal so a leak is observable.
       for (const outcome of rollback) {
         if (outcome.status === 'rejected') {
@@ -461,6 +464,7 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
           })
         }
       }
+
       return {
         ok: false,
         why: 'task-create-failed',
@@ -584,19 +588,10 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     }
   }
 
-  // Dispatch the next pending task, or finalise the run when none remain. One
-  // query — filtered to the run, ordered by seq, one row — never scans the whole
-  // task table. `reverse` picks the direction: deepest-first (-1) or, by
-  // default, shallowest-first (1, topological). Only ONE task is dispatched per
-  // call; completion arrives out-of-band via do:complete, which chains the next,
-  // keeping exactly one task in flight (so no counter lock).
-  //
-  // Dispatch is fire-and-forget by default so a run stays stoppable mid-flight.
-  // With `awaitDispatch` the do:execute post is awaited instead, flushing the
-  // task-row save + transport send inside the caller's live invocation — needed
-  // on a host that tears down the moment it returns (e.g. an AWS Lambda SQS
-  // consumer freezes after the handler resolves, killing an unawaited dispatch
-  // mid-save so the task message is never sent and the run stalls).
+  // Dispatch the next pending task (one bounded query, ordered by seq), or
+  // finalise the run when none remain. One task in flight; do:complete chains
+  // the next. Fire-and-forget by default so a run stays stoppable; `awaitDispatch`
+  // awaits the post to flush save + transport send on freeze-on-return hosts.
   async function dispatchNext(runId: UUID): Promise<void> {
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
 

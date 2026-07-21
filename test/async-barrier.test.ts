@@ -8,10 +8,8 @@ import Traverse from '..'
 import { makeSeneca } from './utils'
 
 describe('Traverse: async completion barrier correctness', () => {
-  // The engine drives one task in flight at a time: each completion is a
-  // read-modify-write on the run's counter, and because completions never
-  // overlap no increment is lost. Signal every task done and confirm the run
-  // reaches exactly total_tasks and flips to completed.
+  // One task in flight: completions never overlap, so no counter increment is
+  // lost. Confirm the run reaches exactly total_tasks and flips to completed.
   test('every completion advances the counter to total_tasks', async () => {
     const childCount = 40
 
@@ -108,9 +106,8 @@ describe('Traverse: async completion barrier correctness', () => {
     expect(run.completed_tasks).equal(2)
   })
 
-  // Over a real transport an entity arrives as a plain object without its
-  // `save$`/`load$` methods. do:execute must rebuild a live entity so the
-  // status write still persists.
+  // A transport delivers a plain object with no entity methods; do:execute must
+  // rebuild a live entity so the status write still persists.
   test('do:execute rehydrates a transport-serialized (plain) task', async () => {
     const dispatched: string[] = []
 

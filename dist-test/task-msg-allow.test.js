@@ -8,9 +8,8 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-// `task_msg` is dispatched as an arbitrary Seneca pattern, so an untrusted
-// caller of `do:create` could otherwise schedule any action. The allowlist
-// option closes that message-injection vector.
+// `task_msg` is an arbitrary Seneca pattern; the allowlist closes the
+// message-injection vector for untrusted `do:create` callers.
 (0, node_test_1.describe)('Traverse: task_msg allowlist', () => {
     (0, node_test_1.test)('rejects a task_msg outside the allowlist', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, {

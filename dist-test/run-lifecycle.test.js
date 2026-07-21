@@ -33,7 +33,6 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task;
-            // console.log('task id: ', taskEnt.id)
             await this.post('sys:traverse,on:task,do:complete', {
                 taskId: taskEnt.id,
             });
@@ -104,7 +103,6 @@ const utils_1 = require("./utils");
             const taskEnt = msg.task;
             // Simulate some async work to increase chance of race conditions
             await (0, utils_1.sleep)(Math.random() * 10);
-            // Mark task as done
             await this.post('sys:traverse,on:task,do:complete', {
                 taskId: taskEnt.id,
             });
@@ -146,7 +144,6 @@ const utils_1 = require("./utils");
             runId: runEnt.id,
         });
         (0, code_1.expect)(startRunRes.ok).equal(true);
-        // Wait for all tasks to complete
         await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(runEnt.id), (r) => r.status === 'completed');
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
@@ -248,7 +245,6 @@ const utils_1 = require("./utils");
         tasks = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        // Verify all done
         for (const task of tasks) {
             (0, code_1.expect)(task.status).equal('done');
         }
@@ -273,7 +269,6 @@ const utils_1 = require("./utils");
         })
             .message('aim:task,print:id', async function (msg) {
             const taskEnt = msg.task;
-            // console.log('task id: ', taskEnt.id)
             await this.post('sys:traverse,on:task,do:complete', {
                 taskId: taskEnt.id,
             });
@@ -445,8 +440,7 @@ const utils_1 = require("./utils");
         // returned before the 50 ms task delay — not awaiting tasks
         (0, code_1.expect)(elapsed).lessThan(40);
         (0, code_1.expect)(executionCount).equal(0);
-        // Wait for background completion — tasks run serially (one in flight), so a
-        // fixed sleep races a slow CI.
+        // Poll for background completion; a fixed sleep races a slow CI.
         const finalRun = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(runEnt.id), (r) => r.status === 'completed');
         (0, code_1.expect)(executionCount).equal(3); // root + 2 children
         // completion barrier: run finishes once every task reports done
@@ -465,8 +459,8 @@ const utils_1 = require("./utils");
             return { ok: true };
         });
         await seneca.ready();
-        // Override dispatch so it does NOT auto-complete: the host (this test)
-        // signals each task's completion by hand, exercising the barrier gate.
+        // Override dispatch so it does NOT auto-complete; the host signals each
+        // completion by hand, exercising the barrier gate.
         seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
             await this.post(msg.task.task_msg, { task: msg.task });
             return { ok: true };
@@ -516,9 +510,8 @@ const utils_1 = require("./utils");
         });
         (0, code_1.expect)(startRes.run.status).equal('completed');
     });
-    // Reverse-BFS guarantee: a parent is never executed before its children. This
-    // is what keeps a destructive task (e.g. delete) from stranding a dangling
-    // reference — children are scrubbed before the parent that points at them.
+    // Reverse-BFS guarantee: a parent never runs before its children — so a
+    // destructive task can't strand a dangling reference.
     (0, node_test_1.test)('executes-children-before-parents', async () => {
         const executed = [];
         const seneca = (0, utils_1.makeSeneca)()
@@ -568,9 +561,8 @@ const utils_1 = require("./utils");
     (0, node_test_1.test)('complete-unknown-task', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default);
         await seneca.ready();
-        // Idempotent: a completion for a missing task is a no-op ok — an
-        // at-least-once transport may redeliver after cleanup, and that must not
-        // become a poison message.
+        // Idempotent: completing a missing task is a no-op ok, so an at-least-once
+        // redelivery after cleanup can't become a poison message.
         const res = await seneca.post('sys:traverse,on:task,do:complete', {
             taskId: 'does-not-exist',
         });
@@ -589,10 +581,8 @@ const utils_1 = require("./utils");
             return { ok: true };
         });
         await seneca.ready();
-        // Override must register after ready() — Seneca loads plugins asynchronously,
-        // so the plugin's handler is registered during ready(). A pre-ready .message()
-        // call would be overwritten by the plugin. Hosts override the same way.
-        // Signal completion so the level walk advances to the next (shallower) level.
+        // Override must register after ready() — the plugin's handler registers
+        // during ready(), so a pre-ready .message() would be overwritten.
         seneca.message('sys:traverse,on:task,do:dispatch', async function (msg) {
             dispatched.push(msg.task.child_canon);
             await this.post('sys:traverse,on:task,do:complete', {
@@ -664,7 +654,6 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(pending.length >= 1).equal(true);
         const runStopRes = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(runStopRes.status).equal('stopped');
-        // run the same process again
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: runEnt.id,
         });
@@ -672,9 +661,7 @@ const utils_1 = require("./utils");
         const tasksRestart = await seneca.entity('sys/traversetask').list$({
             run_id: runEnt.id,
         });
-        // number of tasks shouldn't change
         (0, code_1.expect)(tasksRestart.length).equal(tasksRunStart.length);
-        // Verify all done
         tasksRestart.forEach((task) => {
             (0, code_1.expect)(task.status).equal('done');
         });
@@ -687,10 +674,8 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
-    // awaitDispatch flushes the per-task do:execute (task-row save + transport
-    // send) inside the do:start await instead of firing it and returning. Observe
-    // it by making the dispatch handler slow: with awaitDispatch the dispatch has
-    // already run when do:start resolves; by default it has not.
+    // A slow dispatch handler makes the flush observable: with awaitDispatch the
+    // dispatch has already run when do:start resolves; by default it has not.
     (0, node_test_1.test)('await-dispatch-flushes-before-return', async () => {
         async function run(awaitDispatch) {
             const dispatched = [];

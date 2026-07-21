@@ -7,9 +7,8 @@ import Traverse from '..'
 
 import { makeSeneca, waitFor } from './utils'
 
-// Barrier semantics: on:task,do:complete marks a task done (storing optional
-// result/fragment) and routes run completion through the overridable
-// on:run,do:claim pin, which emits on:run,did:complete exactly once.
+// on:task,do:complete marks a task done and routes run completion through the
+// overridable on:run,do:claim pin, which emits on:run,did:complete once.
 describe('Traverse: complete task barrier', () => {
   test('complete-task-marks-done', async () => {
     const seneca = makeSeneca()
@@ -420,8 +419,7 @@ describe('Traverse: complete task barrier', () => {
 
   test('claim-pin-gates-did-complete', async () => {
     // Overriding on:run,do:claim to never claim must suppress did:complete even
-    // when every task is done — proving the emission is gated by the claim pin
-    // (the seam a distributed host swaps for an atomic conditional write).
+    // when every task is done — the emission is gated by the claim pin.
     let completionCount = 0
 
     const seneca = makeSeneca()

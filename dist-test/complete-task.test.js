@@ -8,9 +8,8 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-// Barrier semantics: on:task,do:complete marks a task done (storing optional
-// result/fragment) and routes run completion through the overridable
-// on:run,do:claim pin, which emits on:run,did:complete exactly once.
+// on:task,do:complete marks a task done and routes run completion through the
+// overridable on:run,do:claim pin, which emits on:run,did:complete once.
 (0, node_test_1.describe)('Traverse: complete task barrier', () => {
     (0, node_test_1.test)('complete-task-marks-done', async () => {
         const seneca = (0, utils_1.makeSeneca)()
@@ -325,8 +324,7 @@ const utils_1 = require("./utils");
     });
     (0, node_test_1.test)('claim-pin-gates-did-complete', async () => {
         // Overriding on:run,do:claim to never claim must suppress did:complete even
-        // when every task is done — proving the emission is gated by the claim pin
-        // (the seam a distributed host swaps for an atomic conditional write).
+        // when every task is done — the emission is gated by the claim pin.
         let completionCount = 0;
         const seneca = (0, utils_1.makeSeneca)()
             .use(__1.default, {

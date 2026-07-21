@@ -32,7 +32,6 @@ describe('Traverse: run lifecycle', () => {
       })
       .message('aim:task,print:id', async function (this: any, msg: any) {
         const taskEnt = msg.task
-        // console.log('task id: ', taskEnt.id)
 
         await this.post('sys:traverse,on:task,do:complete', {
           taskId: taskEnt.id,
@@ -127,7 +126,6 @@ describe('Traverse: run lifecycle', () => {
         // Simulate some async work to increase chance of race conditions
         await sleep(Math.random() * 10)
 
-        // Mark task as done
         await this.post('sys:traverse,on:task,do:complete', {
           taskId: taskEnt.id,
         })
@@ -182,7 +180,6 @@ describe('Traverse: run lifecycle', () => {
 
     expect(startRunRes.ok).equal(true)
 
-    // Wait for all tasks to complete
     await waitFor(
       () => seneca.entity('sys/traverse').load$(runEnt.id),
       (r: any) => r.status === 'completed',
@@ -330,7 +327,6 @@ describe('Traverse: run lifecycle', () => {
       run_id: runEnt.id,
     })
 
-    // Verify all done
     for (const task of tasks) {
       expect(task.status).equal('done')
     }
@@ -358,7 +354,6 @@ describe('Traverse: run lifecycle', () => {
       })
       .message('aim:task,print:id', async function (this: any, msg: any) {
         const taskEnt = msg.task
-        // console.log('task id: ', taskEnt.id)
 
         await this.post('sys:traverse,on:task,do:complete', {
           taskId: taskEnt.id,
@@ -582,8 +577,7 @@ describe('Traverse: run lifecycle', () => {
     expect(elapsed).lessThan(40)
     expect(executionCount).equal(0)
 
-    // Wait for background completion — tasks run serially (one in flight), so a
-    // fixed sleep races a slow CI.
+    // Poll for background completion; a fixed sleep races a slow CI.
     const finalRun = await waitFor(
       () => seneca.entity('sys/traverse').load$(runEnt.id),
       (r: any) => r.status === 'completed',
@@ -610,8 +604,8 @@ describe('Traverse: run lifecycle', () => {
 
     await seneca.ready()
 
-    // Override dispatch so it does NOT auto-complete: the host (this test)
-    // signals each task's completion by hand, exercising the barrier gate.
+    // Override dispatch so it does NOT auto-complete; the host signals each
+    // completion by hand, exercising the barrier gate.
     seneca.message(
       'sys:traverse,on:task,do:dispatch',
       async function (this: any, msg: any) {
@@ -675,9 +669,8 @@ describe('Traverse: run lifecycle', () => {
     expect(startRes.run.status).equal('completed')
   })
 
-  // Reverse-BFS guarantee: a parent is never executed before its children. This
-  // is what keeps a destructive task (e.g. delete) from stranding a dangling
-  // reference — children are scrubbed before the parent that points at them.
+  // Reverse-BFS guarantee: a parent never runs before its children — so a
+  // destructive task can't strand a dangling reference.
   test('executes-children-before-parents', async () => {
     const executed: string[] = []
 
@@ -746,9 +739,8 @@ describe('Traverse: run lifecycle', () => {
     const seneca = makeSeneca().use(Traverse)
     await seneca.ready()
 
-    // Idempotent: a completion for a missing task is a no-op ok — an
-    // at-least-once transport may redeliver after cleanup, and that must not
-    // become a poison message.
+    // Idempotent: completing a missing task is a no-op ok, so an at-least-once
+    // redelivery after cleanup can't become a poison message.
     const res = await seneca.post('sys:traverse,on:task,do:complete', {
       taskId: 'does-not-exist',
     })
@@ -771,10 +763,8 @@ describe('Traverse: run lifecycle', () => {
 
     await seneca.ready()
 
-    // Override must register after ready() — Seneca loads plugins asynchronously,
-    // so the plugin's handler is registered during ready(). A pre-ready .message()
-    // call would be overwritten by the plugin. Hosts override the same way.
-    // Signal completion so the level walk advances to the next (shallower) level.
+    // Override must register after ready() — the plugin's handler registers
+    // during ready(), so a pre-ready .message() would be overwritten.
     seneca.message(
       'sys:traverse,on:task,do:dispatch',
       async function (this: any, msg: any) {
@@ -873,7 +863,6 @@ describe('Traverse: run lifecycle', () => {
 
     expect(runStopRes.status).equal('stopped')
 
-    // run the same process again
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: runEnt.id,
     })
@@ -887,10 +876,8 @@ describe('Traverse: run lifecycle', () => {
       run_id: runEnt.id,
     })
 
-    // number of tasks shouldn't change
     expect(tasksRestart.length).equal(tasksRunStart.length)
 
-    // Verify all done
     tasksRestart.forEach((task: any) => {
       expect(task.status).equal('done')
     })
@@ -908,10 +895,8 @@ describe('Traverse: run lifecycle', () => {
     expect(run.status).equal('completed')
   })
 
-  // awaitDispatch flushes the per-task do:execute (task-row save + transport
-  // send) inside the do:start await instead of firing it and returning. Observe
-  // it by making the dispatch handler slow: with awaitDispatch the dispatch has
-  // already run when do:start resolves; by default it has not.
+  // A slow dispatch handler makes the flush observable: with awaitDispatch the
+  // dispatch has already run when do:start resolves; by default it has not.
   test('await-dispatch-flushes-before-return', async () => {
     async function run(awaitDispatch: boolean): Promise<string[]> {
       const dispatched: string[] = []

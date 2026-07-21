@@ -8,11 +8,8 @@ const node_test_1 = require("node:test");
 const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
-// Completion must not load the whole task table. The async driver picks the
-// next task with a single query filtered to the run, ordered deepest-first and
-// limited to one row. This test asserts every task-table `list$` during the
-// completion phase returns at most one row — a regression to fetching a whole
-// level (or the whole table) per completion would return many.
+// Completion must not scan the whole task table. Assert every task-table `list$`
+// during the completion phase returns at most one row.
 (0, node_test_1.describe)('Traverse: completion uses a bounded next-task query', () => {
     async function measureCompletionScans(childCount) {
         const seneca = (0, utils_1.makeSeneca)()

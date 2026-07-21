@@ -1,13 +1,4 @@
 import type { Instance } from 'seneca';
-/**
- * The Seneca instance.
- *
- * Seneca is not strictly typed: its exported `Instance` resolves to
- * `Record<string, any>`, so member access is effectively untyped. We alias it
- * here to mark every `this`/`seneca` boundary as a deliberate, contained
- * exception to the project's otherwise-strict typing, rather than scattering
- * bare `any` across the codebase.
- */
 export type Seneca = Instance;
 export type EntityID = string;
 export type UUID = string;
@@ -67,33 +58,27 @@ export type TraverseOptionsFull = {
     customRef: Record<EntityID, string>;
 };
 export type TraverseOptions = Partial<TraverseOptionsFull>;
-/** Input for find:deps message */
 export interface FindDepsInput {
     rootEntity?: EntityID;
 }
-/** Input for find:children message */
 export interface FindChildrenInput {
     rootEntity?: EntityID;
     rootEntityId: UUID;
 }
-/** Input for on:run,do:create message */
 export interface CreateTaskRunInput {
     rootEntity?: EntityID;
     rootEntityId: UUID;
     taskMsg: Message;
 }
-/** Input for on:task,do:execute message */
 export interface TaskExecuteInput {
     task: TaskEntity;
 }
 export interface DispatchInput {
     task: TaskEntity;
 }
-/** Input for on:run,do:start message */
 export interface RunStartInput {
     runId: string;
 }
-/** Input for on:run,do:stop message */
 export interface RunStopInput {
     runId: string;
 }
@@ -108,27 +93,22 @@ export interface RunDidCompleteInput {
 export interface RunClaimInput {
     run: RunEntity;
 }
-/** Base result type */
 export interface BaseResult {
     ok: boolean;
 }
-/** Invalid/error result */
 export interface InvalidResult extends BaseResult {
     ok: false;
     why: string;
     error?: Record<string, any>;
 }
-/** Result for find:deps message */
 export interface FindDepsResult extends BaseResult {
     ok: true;
     deps: ParentChildRelation[];
 }
-/** Result for find:children message */
 export interface FindChildrenResult extends BaseResult {
     ok: true;
     children: ChildInstance[];
 }
-/** Result for on:run,do:create message */
 export interface CreateTaskRunResult extends BaseResult {
     ok: true;
     run: RunEntity;
@@ -142,19 +122,16 @@ export interface CreateTaskRunRollbackResult extends BaseResult {
     tasksCreated: 0;
     tasksFailed: number;
 }
-/** Result for on:task,do:execute message */
 export interface TaskExecuteResult extends BaseResult {
     ok: true;
 }
 export interface DispatchResult extends BaseResult {
     ok: true;
 }
-/** Result for on:run,do:start message */
 export interface RunStartResult extends BaseResult {
     ok: true;
     run: RunEntity;
 }
-/** Result for on:run,do:stop message */
 export interface RunStopResult extends BaseResult {
     ok: true;
     run: RunEntity;
@@ -182,7 +159,6 @@ export type MsgRunStopFn = (msg: RunStopInput) => Promise<RunStopResult | Invali
 export type MsgTaskCompleteFn = (msg: TaskCompleteInput) => Promise<TaskCompleteResult>;
 export type MsgRunDidCompleteFn = (msg: RunDidCompleteInput) => Promise<RunDidCompleteResult>;
 export type MsgRunClaimFn = (msg: RunClaimInput) => Promise<RunClaimResult>;
-/** Traverse plugin function */
 export interface TraversePlugin {
     (this: Seneca, options: TraverseOptionsFull): void;
     defaults: TraverseOptionsFull;

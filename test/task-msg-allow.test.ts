@@ -7,9 +7,8 @@ import Traverse from '..'
 
 import { makeSeneca } from './utils'
 
-// `task_msg` is dispatched as an arbitrary Seneca pattern, so an untrusted
-// caller of `do:create` could otherwise schedule any action. The allowlist
-// option closes that message-injection vector.
+// `task_msg` is an arbitrary Seneca pattern; the allowlist closes the
+// message-injection vector for untrusted `do:create` callers.
 describe('Traverse: task_msg allowlist', () => {
   test('rejects a task_msg outside the allowlist', async () => {
     const seneca = makeSeneca().use(Traverse, {

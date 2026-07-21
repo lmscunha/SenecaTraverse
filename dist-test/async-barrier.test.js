@@ -9,10 +9,8 @@ const code_1 = require("@hapi/code");
 const __1 = __importDefault(require(".."));
 const utils_1 = require("./utils");
 (0, node_test_1.describe)('Traverse: async completion barrier correctness', () => {
-    // The engine drives one task in flight at a time: each completion is a
-    // read-modify-write on the run's counter, and because completions never
-    // overlap no increment is lost. Signal every task done and confirm the run
-    // reaches exactly total_tasks and flips to completed.
+    // One task in flight: completions never overlap, so no counter increment is
+    // lost. Confirm the run reaches exactly total_tasks and flips to completed.
     (0, node_test_1.test)('every completion advances the counter to total_tasks', async () => {
         const childCount = 40;
         const seneca = (0, utils_1.makeSeneca)()
@@ -91,9 +89,8 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(runId);
         (0, code_1.expect)(run.completed_tasks).equal(2);
     });
-    // Over a real transport an entity arrives as a plain object without its
-    // `save$`/`load$` methods. do:execute must rebuild a live entity so the
-    // status write still persists.
+    // A transport delivers a plain object with no entity methods; do:execute must
+    // rebuild a live entity so the status write still persists.
     (0, node_test_1.test)('do:execute rehydrates a transport-serialized (plain) task', async () => {
         const dispatched = [];
         const seneca = (0, utils_1.makeSeneca)()

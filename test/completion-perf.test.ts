@@ -7,11 +7,8 @@ import Traverse from '..'
 
 import { makeSeneca } from './utils'
 
-// Completion must not load the whole task table. The async driver picks the
-// next task with a single query filtered to the run, ordered deepest-first and
-// limited to one row. This test asserts every task-table `list$` during the
-// completion phase returns at most one row — a regression to fetching a whole
-// level (or the whole table) per completion would return many.
+// Completion must not scan the whole task table. Assert every task-table `list$`
+// during the completion phase returns at most one row.
 describe('Traverse: completion uses a bounded next-task query', () => {
   async function measureCompletionScans(childCount: number) {
     const seneca = makeSeneca()

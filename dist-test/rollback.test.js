@@ -83,10 +83,8 @@ const utils_1 = require("./utils");
         (0, code_1.expect)(dispatched.length).lessThan(4);
     });
     (0, node_test_1.test)('create-run-rolls-back-all-on-partial-failure', async () => {
-        // Force one task save to fail; atomic rollback must remove every created
-        // task AND the run, returning ok:false with the failure count. A
-        // callback-style reply(err) is a caught rejection (Promise.allSettled), not
-        // a fatal process abort.
+        // Force one task save to fail; rollback must remove every created task AND
+        // the run, returning ok:false with the failure count.
         const seneca = (0, utils_1.makeSeneca)({ quiet: true })
             .use(__1.default, {
             rootExecute: false,
