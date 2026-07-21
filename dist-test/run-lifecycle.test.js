@@ -693,5 +693,44 @@ const utils_1 = require("./utils");
         const run = await seneca.entity('sys/traverse').load$(runEnt.id);
         (0, code_1.expect)(run.status).equal('completed');
     });
+    // awaitDispatch flushes the per-task do:execute (task-row save + transport
+    // send) inside the do:start await instead of firing it and returning. Observe
+    // it by making the dispatch handler slow: with awaitDispatch the dispatch has
+    // already run when do:start resolves; by default it has not.
+    (0, node_test_1.test)('await-dispatch-flushes-before-return', async () => {
+        async function run(awaitDispatch) {
+            const dispatched = [];
+            const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
+                awaitDispatch,
+                relations: { parental: [] },
+            });
+            await seneca.ready();
+            seneca.message('sys:traverse,do:dispatch,on:task', async function (msg) {
+                // Slow send: a fire-and-forget dispatch is still pending here.
+                await (0, utils_1.sleep)(30);
+                dispatched.push(msg.task.child_canon);
+                await this.post('sys:traverse,on:task,do:complete', {
+                    taskId: msg.task.id,
+                });
+                return { ok: true };
+            });
+            const rootEntityId = '123';
+            const rootEntity = 'foo/b0';
+            const createRes = await seneca.post('sys:traverse,on:run,do:create', {
+                rootEntity,
+                rootEntityId,
+                taskMsg: 'aim:task,dispatch:test',
+            });
+            await seneca.post('sys:traverse,on:run,do:start', {
+                runId: createRes.run.id,
+            });
+            // Sampled the instant do:start returns — no sleep.
+            return dispatched;
+        }
+        // awaitDispatch: do:start awaits the slow dispatch, so it has already run.
+        (0, code_1.expect)(await run(true)).equal(['foo/b0']);
+        // Default: do:start returns before the slow dispatch completes.
+        (0, code_1.expect)(await run(false)).equal([]);
+    });
 });
 //# sourceMappingURL=run-lifecycle.test.js.map
