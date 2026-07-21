@@ -127,9 +127,7 @@ function Traverse(options) {
             }
             const childInstancesSet = parentInstanceMap.get(childCanon);
             const childQueryPromises = Array.from(parentInstances).map(async (parentId) => {
-                const childInstances = await seneca
-                    .entity(childCanon)
-                    .list$({
+                const childInstances = await seneca.entity(childCanon).list$({
                     [foreignRef]: parentId,
                     fields$: ['id'],
                 });
