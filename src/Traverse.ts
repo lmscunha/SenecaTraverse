@@ -134,9 +134,9 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
       { task: Object },
       shaped(taskMsgShape, msgDispatch),
     )
+    .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
     .message('on:run,do:start', { runId: String }, msgRunStart)
     .message('on:run,do:stop', { runId: String }, msgRunStop)
-    .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
     .message(
       'on:run,did:complete',
       { run: Object },
@@ -428,6 +428,58 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     return { ok: true }
   }
 
+  // Deliver a task to its handler. Default posts in-process; a transport host
+  // overrides this to enqueue. Either way the handler/worker posts do:complete
+  // when the work is done, which chains the next task.
+  async function msgDispatch(
+    this: Seneca,
+    msg: DispatchInput,
+  ): Promise<DispatchResult> {
+    const task: TaskEntity = createTaskEntity(msg.task)
+    await seneca.post(task.task_msg, { task })
+    return { ok: true }
+  }
+
+  async function msgTaskComplete(
+    this: Seneca,
+    msg: TaskCompleteInput,
+  ): Promise<TaskCompleteResult> {
+    const task: TaskEntity = await seneca
+      .entity('sys/traversetask')
+      .load$(msg.taskId)
+
+    if (!task) {
+      return { ok: true }
+    }
+
+    // Transition once — `done` is the idempotency marker against at-least-once
+    // redelivery, so the counter can't advance or re-chain twice.
+    if (task.status !== 'done') {
+      task.status = 'done'
+      task.done_at = Date.now()
+      if (msg.result !== undefined) task.result = msg.result
+      if (msg.fragment !== undefined) task.fragment = msg.fragment
+      await task.save$()
+
+      const run: RunEntity = await seneca
+        .entity('sys/traverse')
+        .load$(task.run_id)
+      if (run) {
+        run.completed_tasks = (run.completed_tasks ?? 0) + 1
+        await run.save$()
+      }
+
+      await dispatchNext(task.run_id)
+    }
+
+    // Reload: dispatchNext may have finalised the run (status/completed_at).
+    const run: RunEntity = await seneca
+      .entity('sys/traverse')
+      .load$(task.run_id)
+
+    return { ok: true, doneTasks: run?.completed_tasks, run }
+  }
+
   // Start a run: dispatch the first pending task (order set by the `reverse`
   // option) and return; each completion chains the next, one task in flight.
   async function msgRunStart(
@@ -480,58 +532,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     await run.save$()
 
     return { ok: true, run }
-  }
-
-  // Deliver a task to its handler. Default posts in-process; a transport host
-  // overrides this to enqueue. Either way the handler/worker posts do:complete
-  // when the work is done, which chains the next task.
-  async function msgDispatch(
-    this: Seneca,
-    msg: DispatchInput,
-  ): Promise<DispatchResult> {
-    const task: TaskEntity = createTaskEntity(msg.task)
-    await seneca.post(task.task_msg, { task })
-    return { ok: true }
-  }
-
-  async function msgTaskComplete(
-    this: Seneca,
-    msg: TaskCompleteInput,
-  ): Promise<TaskCompleteResult> {
-    const task: TaskEntity = await seneca
-      .entity('sys/traversetask')
-      .load$(msg.taskId)
-
-    if (!task) {
-      return { ok: true }
-    }
-
-    // Transition once — `done` is the idempotency marker against at-least-once
-    // redelivery, so the counter can't advance or re-chain twice.
-    if (task.status !== 'done') {
-      task.status = 'done'
-      task.done_at = Date.now()
-      if (msg.result !== undefined) task.result = msg.result
-      if (msg.fragment !== undefined) task.fragment = msg.fragment
-      await task.save$()
-
-      const run: RunEntity = await seneca
-        .entity('sys/traverse')
-        .load$(task.run_id)
-      if (run) {
-        run.completed_tasks = (run.completed_tasks ?? 0) + 1
-        await run.save$()
-      }
-
-      await dispatchNext(task.run_id)
-    }
-
-    // Reload: dispatchNext may have finalised the run (status/completed_at).
-    const run: RunEntity = await seneca
-      .entity('sys/traverse')
-      .load$(task.run_id)
-
-    return { ok: true, doneTasks: run?.completed_tasks, run }
   }
 
   async function msgRunDidComplete(

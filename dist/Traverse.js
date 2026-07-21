@@ -62,9 +62,9 @@ function Traverse(options) {
         .message('on:run,do:create', { rootEntityId: String, taskMsg: String }, msgCreateTaskRun)
         .message('on:task,do:execute', { task: Object }, shaped(taskMsgShape, msgTaskExecute))
         .message('on:task,do:dispatch', { task: Object }, shaped(taskMsgShape, msgDispatch))
+        .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
         .message('on:run,do:start', { runId: String }, msgRunStart)
         .message('on:run,do:stop', { runId: String }, msgRunStop)
-        .message('on:task,do:complete', { taskId: String }, msgTaskComplete)
         .message('on:run,did:complete', { run: Object }, shaped(runMsgShape, msgRunDidComplete))
         .message('on:run,do:claim', { run: Object }, shaped(runMsgShape, msgRunClaim));
     // Entity pairs from a root, breadth-first, sorted by level then name.
@@ -271,40 +271,6 @@ function Traverse(options) {
         await seneca.post('sys:traverse,on:task,do:dispatch', { task });
         return { ok: true };
     }
-    // Start a run: dispatch the first pending task (order set by the `reverse`
-    // option) and return; each completion chains the next, one task in flight.
-    async function msgRunStart(msg) {
-        const runId = msg.runId;
-        const run = await seneca.entity('sys/traverse').load$(runId);
-        if (!run?.status) {
-            return { ok: false, why: 'run-entity-not-found' };
-        }
-        if (run.status === 'completed' || run.status === 'active') {
-            return { ok: true, run };
-        }
-        run.status = 'active';
-        run.started_at = Date.now();
-        await run.save$();
-        await dispatchNext(run.id);
-        const startedRun = await seneca
-            .entity('sys/traverse')
-            .load$(run.id);
-        return { ok: true, run: startedRun };
-    }
-    // Stop a run: halts dispatch of the next pending task.
-    async function msgRunStop(msg) {
-        const runId = msg.runId;
-        const run = await seneca.entity('sys/traverse').load$(runId);
-        if (!run?.status) {
-            return { ok: false, why: 'run-entity-not-found' };
-        }
-        if (run.status !== 'active') {
-            return { ok: true, run };
-        }
-        run.status = 'stopped';
-        await run.save$();
-        return { ok: true, run };
-    }
     // Deliver a task to its handler. Default posts in-process; a transport host
     // overrides this to enqueue. Either way the handler/worker posts do:complete
     // when the work is done, which chains the next task.
@@ -344,6 +310,40 @@ function Traverse(options) {
             .entity('sys/traverse')
             .load$(task.run_id);
         return { ok: true, doneTasks: run?.completed_tasks, run };
+    }
+    // Start a run: dispatch the first pending task (order set by the `reverse`
+    // option) and return; each completion chains the next, one task in flight.
+    async function msgRunStart(msg) {
+        const runId = msg.runId;
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run?.status) {
+            return { ok: false, why: 'run-entity-not-found' };
+        }
+        if (run.status === 'completed' || run.status === 'active') {
+            return { ok: true, run };
+        }
+        run.status = 'active';
+        run.started_at = Date.now();
+        await run.save$();
+        await dispatchNext(run.id);
+        const startedRun = await seneca
+            .entity('sys/traverse')
+            .load$(run.id);
+        return { ok: true, run: startedRun };
+    }
+    // Stop a run: halts dispatch of the next pending task.
+    async function msgRunStop(msg) {
+        const runId = msg.runId;
+        const run = await seneca.entity('sys/traverse').load$(runId);
+        if (!run?.status) {
+            return { ok: false, why: 'run-entity-not-found' };
+        }
+        if (run.status !== 'active') {
+            return { ok: true, run };
+        }
+        run.status = 'stopped';
+        await run.save$();
+        return { ok: true, run };
     }
     async function msgRunDidComplete(_msg) {
         return { ok: true };
