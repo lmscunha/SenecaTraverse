@@ -312,7 +312,7 @@ const utils_1 = require("./utils");
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: createRes.run.id,
         });
-        await (0, utils_1.sleep)(100);
+        await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createRes.run.id), (r) => r.status === 'completed');
         const tasks = await seneca
             .entity('sys/traversetask')
             .list$({ run_id: createRes.run.id });
@@ -395,8 +395,7 @@ const utils_1 = require("./utils");
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: createRes.run.id,
         });
-        await (0, utils_1.sleep)(50);
-        const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
+        const run = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createRes.run.id), (r) => r.status === 'completed');
         (0, code_1.expect)(run.status).equal('completed');
         (0, code_1.expect)(didCompleteRun).to.exist();
         (0, code_1.expect)(didCompleteRun.id).equal(createRes.run.id);

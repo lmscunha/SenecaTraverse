@@ -40,8 +40,7 @@ async function runChain(reverse) {
     await seneca.post('sys:traverse,on:run,do:start', {
         runId: createRes.run.id,
     });
-    await (0, utils_1.sleep)(150);
-    const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
+    const run = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createRes.run.id), (r) => r.status === 'completed');
     (0, code_1.expect)(run.status).equal('completed');
     const tasks = await seneca
         .entity('sys/traversetask')

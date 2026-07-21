@@ -100,10 +100,8 @@ const utils_1 = require("./utils");
         const exec1 = seneca.post('sys:traverse,on:task,do:execute', { task });
         const exec2 = seneca.post('sys:traverse,on:task,do:execute', { task });
         await Promise.all([exec1, exec2]);
-        // TODO: improve async validation
-        await (0, utils_1.sleep)(50);
+        const updatedTask = await (0, utils_1.waitFor)(() => seneca.entity('sys/traversetask').load$(task.id), (t) => t.status === 'done');
         (0, code_1.expect)(executionCount).equal(1);
-        const updatedTask = await seneca.entity('sys/traversetask').load$(task.id);
         (0, code_1.expect)(updatedTask.status).equal('done');
     });
 });

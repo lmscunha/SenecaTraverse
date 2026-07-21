@@ -34,8 +34,7 @@ const utils_1 = require("./utils");
         await seneca.post('sys:traverse,on:run,do:start', {
             runId: createRes.run.id,
         });
-        await (0, utils_1.sleep)(50);
-        const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
+        const run = await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createRes.run.id), (r) => r.status === 'completed');
         (0, code_1.expect)(run.status).equal('completed');
     });
     (0, node_test_1.test)('stop-halts-the-run', async () => {
@@ -72,10 +71,12 @@ const utils_1 = require("./utils");
         });
         (0, code_1.expect)(createRes.tasksCreated).equal(4); // root + d1 + d2 + d3
         seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id });
-        await (0, utils_1.sleep)(10);
+        // Stop only after at least one task has started dispatching.
+        await (0, utils_1.waitFor)(async () => dispatched.length, (n) => n >= 1);
         await seneca.post('sys:traverse,on:run,do:stop', {
             runId: createRes.run.id,
         });
+        // Settle: give any (erroneous) further dispatch a chance to appear.
         await (0, utils_1.sleep)(100);
         const run = await seneca.entity('sys/traverse').load$(createRes.run.id);
         (0, code_1.expect)(run.status).equal('stopped');

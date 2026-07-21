@@ -266,19 +266,6 @@ const utils_1 = require("./utils");
         // console.log('RES', res)
         (0, code_1.expect)(res.deps).equal([]);
     });
-    (0, node_test_1.test)('find-deps-empty-list', async () => {
-        const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
-            relations: {
-                parental: [],
-            },
-        });
-        await seneca.ready();
-        const res = await seneca.post('sys:traverse,find:deps', {
-            rootEntity: 'foo/bar0',
-        });
-        // console.log('RES', res)
-        (0, code_1.expect)(res.deps).equal([]);
-    });
     (0, node_test_1.test)('find-deps-l1', async () => {
         const seneca = (0, utils_1.makeSeneca)().use(__1.default, {
             relations: {

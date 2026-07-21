@@ -78,8 +78,9 @@ const utils_1 = require("./utils");
             await seneca.post('sys:traverse,on:run,do:start', {
                 runId: createTaskRes.run.id,
             });
-            // Let the fire-and-forget traversal finish (or throw).
-            await (0, utils_1.sleep)(300);
+            // Let the fire-and-forget traversal finish (or throw): the handler
+            // removes its own run, so wait until the run entity is gone.
+            await (0, utils_1.waitFor)(() => seneca.entity('sys/traverse').load$(createTaskRes.run.id), (r) => null == r);
         }
         finally {
             process.removeListener('unhandledRejection', onRejection);
