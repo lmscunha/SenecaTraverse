@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, waitFor } from './utils'
 
 describe('Traverse: execute task', () => {
   test('execute-task', async () => {
@@ -125,12 +125,12 @@ describe('Traverse: execute task', () => {
 
     await Promise.all([exec1, exec2])
 
-    // TODO: improve async validation
-    await sleep(50)
+    const updatedTask = await waitFor(
+      () => seneca.entity('sys/traversetask').load$(task.id),
+      (t: any) => t.status === 'done',
+    )
 
     expect(executionCount).equal(1)
-
-    const updatedTask = await seneca.entity('sys/traversetask').load$(task.id)
     expect(updatedTask.status).equal('done')
   })
 })

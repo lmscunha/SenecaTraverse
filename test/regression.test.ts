@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, waitFor } from './utils'
 
 describe('Traverse: regression', () => {
   // Bug: plugin init pushed the injected ['sys/traverse','sys/traversetask']
@@ -91,8 +91,12 @@ describe('Traverse: regression', () => {
         runId: createTaskRes.run.id,
       })
 
-      // Let the fire-and-forget traversal finish (or throw).
-      await sleep(300)
+      // Let the fire-and-forget traversal finish (or throw): the handler
+      // removes its own run, so wait until the run entity is gone.
+      await waitFor(
+        () => seneca.entity('sys/traverse').load$(createTaskRes.run.id),
+        (r: any) => null == r,
+      )
     } finally {
       process.removeListener('unhandledRejection', onRejection)
     }

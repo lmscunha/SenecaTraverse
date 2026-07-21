@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, waitFor } from './utils'
 
 // A linear chain root(l0) → l1 → l2. Returns the tasks sorted by seq once the
 // run completes.
@@ -43,9 +43,10 @@ async function runChain(reverse: boolean) {
   await seneca.post('sys:traverse,on:run,do:start', {
     runId: createRes.run.id,
   })
-  await sleep(150)
-
-  const run = await seneca.entity('sys/traverse').load$(createRes.run.id)
+  const run = await waitFor(
+    () => seneca.entity('sys/traverse').load$(createRes.run.id),
+    (r: any) => r.status === 'completed',
+  )
   expect(run.status).equal('completed')
 
   const tasks = await seneca

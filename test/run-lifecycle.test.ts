@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, sleep, waitFor } from './utils'
 
 describe('Traverse: run lifecycle', () => {
   test('start-run', async () => {
@@ -83,8 +83,10 @@ describe('Traverse: run lifecycle', () => {
 
     expect(startRunRes.ok).true()
 
-    // TODO: improve async validation
-    await sleep(50)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -181,9 +183,10 @@ describe('Traverse: run lifecycle', () => {
     expect(startRunRes.ok).equal(true)
 
     // Wait for all tasks to complete
-
-    // TODO: improve async validation
-    await sleep(500)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -250,8 +253,10 @@ describe('Traverse: run lifecycle', () => {
       runId: runEnt.id,
     })
 
-    // TODO: improve async validation
-    await sleep(50)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -316,8 +321,10 @@ describe('Traverse: run lifecycle', () => {
       runId: runEnt.id,
     })
 
-    // TODO: improve async validation
-    await sleep(300)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     tasks = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -507,8 +514,10 @@ describe('Traverse: run lifecycle', () => {
       runId: runEnt.id,
     })
 
-    // TODO: improve async validation
-    await sleep(200)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     const tasksRestart = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,
@@ -573,13 +582,12 @@ describe('Traverse: run lifecycle', () => {
     expect(elapsed).lessThan(40)
     expect(executionCount).equal(0)
 
-    // Poll for background completion — tasks run serially (one in flight), so a
-    // fixed sleep races a slow CI. Wait up to ~2s for the run to finish.
-    let finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
-    for (let i = 0; i < 100 && finalRun.status !== 'completed'; i++) {
-      await sleep(20)
-      finalRun = await seneca.entity('sys/traverse').load$(runEnt.id)
-    }
+    // Wait for background completion — tasks run serially (one in flight), so a
+    // fixed sleep races a slow CI.
+    const finalRun = await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     expect(executionCount).equal(3) // root + 2 children
 
@@ -722,7 +730,10 @@ describe('Traverse: run lifecycle', () => {
       runId: createRes.run.id,
     })
 
-    await sleep(150)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(createRes.run.id),
+      (r: any) => r.status === 'completed',
+    )
 
     // Deepest-first: e2 (seq 2) then e1 (seq 1) then the root e0 (seq 0).
     expect(executed).equal(['foo/e2', 'foo/e1', 'foo/e0'])
@@ -790,7 +801,10 @@ describe('Traverse: run lifecycle', () => {
       runId: createRes.run.id,
     })
 
-    await sleep(50)
+    await waitFor(
+      async () => dispatched.length,
+      (n) => n >= 2,
+    )
 
     // Override intercepts every dispatch; default transport never called.
     // Reverse-BFS: the child (seq 1) dispatches before the root (seq 0).
@@ -864,8 +878,10 @@ describe('Traverse: run lifecycle', () => {
       runId: runEnt.id,
     })
 
-    // TODO: improve async validation
-    await sleep(200)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(runEnt.id),
+      (r: any) => r.status === 'completed',
+    )
 
     const tasksRestart = await seneca.entity('sys/traversetask').list$({
       run_id: runEnt.id,

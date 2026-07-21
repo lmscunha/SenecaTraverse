@@ -301,22 +301,6 @@ describe('Traverse: find:deps', () => {
     expect(res.deps).equal([])
   })
 
-  test('find-deps-empty-list', async () => {
-    const seneca = makeSeneca().use(Traverse, {
-      relations: {
-        parental: [],
-      },
-    })
-    await seneca.ready()
-
-    const res = await seneca.post('sys:traverse,find:deps', {
-      rootEntity: 'foo/bar0',
-    })
-    // console.log('RES', res)
-
-    expect(res.deps).equal([])
-  })
-
   test('find-deps-l1', async () => {
     const seneca = makeSeneca().use(Traverse, {
       relations: {

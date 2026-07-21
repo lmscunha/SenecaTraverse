@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, sleep, waitFor } from './utils'
 
 describe('Traverse: atomic rollback', () => {
   test('run-completes', async () => {
@@ -38,9 +38,11 @@ describe('Traverse: atomic rollback', () => {
     await seneca.post('sys:traverse,on:run,do:start', {
       runId: createRes.run.id,
     })
-    await sleep(50)
 
-    const run = await seneca.entity('sys/traverse').load$(createRes.run.id)
+    const run = await waitFor(
+      () => seneca.entity('sys/traverse').load$(createRes.run.id),
+      (r: any) => r.status === 'completed',
+    )
     expect(run.status).equal('completed')
   })
 
@@ -85,11 +87,16 @@ describe('Traverse: atomic rollback', () => {
 
     seneca.post('sys:traverse,on:run,do:start', { runId: createRes.run.id })
 
-    await sleep(10)
+    // Stop only after at least one task has started dispatching.
+    await waitFor(
+      async () => dispatched.length,
+      (n) => n >= 1,
+    )
     await seneca.post('sys:traverse,on:run,do:stop', {
       runId: createRes.run.id,
     })
 
+    // Settle: give any (erroneous) further dispatch a chance to appear.
     await sleep(100)
 
     const run = await seneca.entity('sys/traverse').load$(createRes.run.id)

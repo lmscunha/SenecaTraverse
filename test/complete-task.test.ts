@@ -5,7 +5,7 @@ import { expect } from '@hapi/code'
 
 import Traverse from '..'
 
-import { makeSeneca, sleep } from './utils'
+import { makeSeneca, waitFor } from './utils'
 
 // Barrier semantics: on:task,do:complete marks a task done (storing optional
 // result/fragment) and routes run completion through the overridable
@@ -400,7 +400,10 @@ describe('Traverse: complete task barrier', () => {
       runId: createRes.run.id,
     })
 
-    await sleep(100)
+    await waitFor(
+      () => seneca.entity('sys/traverse').load$(createRes.run.id),
+      (r: any) => r.status === 'completed',
+    )
 
     const tasks = await seneca
       .entity('sys/traversetask')
@@ -514,9 +517,10 @@ describe('Traverse: complete task barrier', () => {
       runId: createRes.run.id,
     })
 
-    await sleep(50)
-
-    const run = await seneca.entity('sys/traverse').load$(createRes.run.id)
+    const run = await waitFor(
+      () => seneca.entity('sys/traverse').load$(createRes.run.id),
+      (r: any) => r.status === 'completed',
+    )
     expect(run.status).equal('completed')
     expect(didCompleteRun).to.exist()
     expect(didCompleteRun.id).equal(createRes.run.id)
