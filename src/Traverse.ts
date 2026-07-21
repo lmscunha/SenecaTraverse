@@ -1,7 +1,5 @@
 /* Copyright © 2026 Seneca Project Contributors, MIT License. */
 
-import { Shape, Open, Optional } from 'shape'
-
 import type {
   // Base Types
   Seneca,
@@ -50,29 +48,6 @@ import type {
 
 export type { TraverseOptions } from './types'
 
-// Message property schemas (shape). Seneca bundles its own gubu, so shape nodes
-// can't be embedded in the `.message()` arg schema — validate the msg at handler
-// entry instead. `Open` allows Seneca's own meta fields through.
-const shapeFindDeps = Shape(Open({ rootEntity: Optional(String) }))
-const shapeFindChildren = Shape(
-  Open({ rootEntity: Optional(String), rootEntityId: String }),
-)
-const shapeCreate = Shape(
-  Open({
-    rootEntity: Optional(String),
-    rootEntityId: String,
-    taskMsg: String,
-  }),
-)
-const shapeTaskExecute = Shape(Open({ task: Object }))
-const shapeDispatch = Shape(Open({ task: Object }))
-const shapeRunStart = Shape(Open({ runId: String }))
-const shapeRunStop = Shape(Open({ runId: String }))
-// result/fragment are optional and any-typed; Open passes them through.
-const shapeTaskComplete = Shape(Open({ taskId: String }))
-const shapeRunDidComplete = Shape(Open({ run: Object }))
-const shapeRunClaim = Shape(Open({ run: Object }))
-
 function Traverse(this: Seneca, options: TraverseOptionsFull) {
   const seneca = this
 
@@ -95,10 +70,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     ],
   }
 
-  // The `.message()` arg schema (native constructors) drives Seneca's routing
-  // validation and the generated docs. The shape* validators above additionally
-  // type each message's properties at handler entry (shape nodes can't be
-  // embedded in Seneca's bundled-gubu message schema).
   seneca
     .fix('sys:traverse')
     .message('find:deps', {}, msgFindDeps)
@@ -121,7 +92,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: FindDepsInput,
   ): Promise<FindDepsResult> {
-    shapeFindDeps(msg)
     const allRelations: Parental = options.relations.parental
     const rootEntity = msg.rootEntity || options.rootEntity
     const deps: ParentChildRelation[] = []
@@ -177,7 +147,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: FindChildrenInput,
   ): Promise<FindChildrenResult> {
-    shapeFindChildren(msg)
     const rootEntity: EntityID = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
     const customRef = options.customRef
@@ -251,7 +220,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
   ): Promise<
     CreateTaskRunResult | CreateTaskRunRollbackResult | InvalidResult
   > {
-    shapeCreate(msg)
     const taskMsg = msg.taskMsg
     const rootEntity = msg.rootEntity || options.rootEntity
     const rootEntityId = msg.rootEntityId
@@ -386,7 +354,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: TaskExecuteInput,
   ): Promise<TaskExecuteResult> {
-    shapeTaskExecute(msg)
     const task: TaskEntity = createTaskEntity(msg.task)
 
     if (task.status == 'done' || task.status == 'dispatched') {
@@ -408,7 +375,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: RunStartInput,
   ): Promise<RunStartResult | InvalidResult> {
-    shapeRunStart(msg)
     const runId = msg.runId
 
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
@@ -439,7 +405,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: RunStopInput,
   ): Promise<RunStopResult | InvalidResult> {
-    shapeRunStop(msg)
     const runId = msg.runId
 
     const run: RunEntity = await seneca.entity('sys/traverse').load$(runId)
@@ -465,7 +430,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: DispatchInput,
   ): Promise<DispatchResult> {
-    shapeDispatch(msg)
     const task: TaskEntity = createTaskEntity(msg.task)
     await seneca.post(task.task_msg, { task })
     return { ok: true }
@@ -475,7 +439,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: TaskCompleteInput,
   ): Promise<TaskCompleteResult> {
-    shapeTaskComplete(msg)
     const task: TaskEntity = await seneca
       .entity('sys/traversetask')
       .load$(msg.taskId)
@@ -516,7 +479,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: RunDidCompleteInput,
   ): Promise<RunDidCompleteResult> {
-    shapeRunDidComplete(msg)
     return { ok: true }
   }
 
@@ -526,7 +488,6 @@ function Traverse(this: Seneca, options: TraverseOptionsFull) {
     this: Seneca,
     msg: RunClaimInput,
   ): Promise<RunClaimResult> {
-    shapeRunClaim(msg)
     const run: RunEntity = await seneca.entity('sys/traverse').load$(msg.run.id)
 
     if (!run || run.status !== 'active') {
